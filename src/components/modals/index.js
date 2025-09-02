@@ -1,0 +1,1 @@
+export { default as QuickAddModal } from './QuickAddModal';
