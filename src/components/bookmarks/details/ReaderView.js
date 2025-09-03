@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { FiExternalLink, FiRefreshCw } from "react-icons/fi";
+import {
+  FiExternalLink,
+  FiRefreshCw,
+  FiBook,
+  FiAlertCircle,
+} from "react-icons/fi";
 import { apiClient } from "../../../utils/api";
 
 const ReaderView = ({ bookmarkId, url }) => {
@@ -22,7 +27,12 @@ const ReaderView = ({ bookmarkId, url }) => {
       setSnapshot(response);
     } catch (err) {
       console.error("Error fetching snapshot:", err);
-      setError("Could not load reader view. Please try again.");
+      // If snapshot doesn't exist, don't show an error, we'll show the generate button
+      if (err.message && err.message.includes("404")) {
+        setError(null);
+      } else {
+        setError("Could not load reader view. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -34,10 +44,15 @@ const ReaderView = ({ bookmarkId, url }) => {
     try {
       // Use the generateBookmarkSnapshot method from apiClient
       const response = await apiClient.generateBookmarkSnapshot(bookmarkId);
-      setSnapshot(response);
+      if (response && response.html_content) {
+        setSnapshot(response);
+        setError(null);
+      } else {
+        throw new Error("Invalid response format");
+      }
     } catch (err) {
       console.error("Error generating snapshot:", err);
-      setError("Could not generate reader view. Please try again.");
+      setError("Could not generate reader view. Please try again later.");
     } finally {
       setIsLoading(false);
     }
@@ -45,33 +60,65 @@ const ReaderView = ({ bookmarkId, url }) => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full p-4">
-        <div className="animate-pulse text-gray-400 dark:text-gray-500">
-          Loading reader view...
+      <div className="flex flex-col items-center justify-center h-full p-4">
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin mb-4"></div>
+        <div className="text-gray-500 dark:text-gray-400">
+          {snapshot ? "Refreshing reader view..." : "Preparing reader view..."}
         </div>
       </div>
     );
   }
 
-  if (error || !snapshot) {
+  if (!snapshot) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <FiBook className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
         <div className="text-gray-600 dark:text-gray-400 mb-6">
-          {error || "No reader view available yet."}
+          No reader view available yet. Generate one to improve readability.
         </div>
         <div className="space-y-3">
           <button
             onClick={generateSnapshot}
-            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-sm font-medium transition-colors flex items-center"
+            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-sm font-medium transition-colors flex items-center justify-center min-w-[200px]"
+            disabled={isLoading}
           >
-            <FiRefreshCw className="w-4 h-4 mr-2" />
+            <FiRefreshCw
+              className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
             Generate Reader View
           </button>
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium transition-colors flex items-center"
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium transition-colors flex items-center justify-center min-w-[200px]"
+          >
+            <FiExternalLink className="w-4 h-4 mr-2" />
+            Open Original Page
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <FiAlertCircle className="w-16 h-16 text-red-300 dark:text-red-700 mb-4" />
+        <div className="text-red-600 dark:text-red-400 mb-6">{error}</div>
+        <div className="space-y-3">
+          <button
+            onClick={generateSnapshot}
+            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-sm font-medium transition-colors flex items-center min-w-[200px] justify-center"
+          >
+            <FiRefreshCw className="w-4 h-4 mr-2" />
+            Try Again
+          </button>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium transition-colors flex items-center min-w-[200px] justify-center"
           >
             <FiExternalLink className="w-4 h-4 mr-2" />
             Open Original Page
@@ -93,8 +140,11 @@ const ReaderView = ({ bookmarkId, url }) => {
           <button
             onClick={generateSnapshot}
             className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 flex items-center"
+            disabled={isLoading}
           >
-            <FiRefreshCw className="w-3 h-3 mr-1" />
+            <FiRefreshCw
+              className={`w-3 h-3 mr-1 ${isLoading ? "animate-spin" : ""}`}
+            />
             Refresh
           </button>
           <a
@@ -112,10 +162,16 @@ const ReaderView = ({ bookmarkId, url }) => {
       {/* Reader Content */}
       <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-prose">
-          <div
-            className="prose dark:prose-invert prose-headings:font-semibold prose-a:text-primary-600 dark:prose-a:text-primary-400"
-            dangerouslySetInnerHTML={{ __html: snapshot.html_content }}
-          />
+          {snapshot.html_content ? (
+            <div
+              className="prose dark:prose-invert prose-headings:font-semibold prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-img:rounded-lg prose-img:max-w-full"
+              dangerouslySetInnerHTML={{ __html: snapshot.html_content }}
+            />
+          ) : (
+            <div className="text-gray-500 dark:text-gray-400 text-center py-8">
+              Content could not be loaded. Try refreshing the reader view.
+            </div>
+          )}
         </div>
       </div>
     </div>

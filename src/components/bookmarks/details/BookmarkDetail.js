@@ -27,6 +27,9 @@ import {
   useDeleteBookmark,
   useUpdateBookmark,
 } from "../../../hooks";
+import { bookmarkKeys } from "../../../hooks/useBookmarks";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "../../../utils/api";
 import {
   formatDate,
   extractDomain,
@@ -47,16 +50,34 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
   const visitBookmark = useVisitBookmark();
   const deleteBookmark = useDeleteBookmark();
   const updateBookmark = useUpdateBookmark();
+  const queryClient = useQueryClient();
 
+  // Custom function to mark bookmark as read without showing a toast
+  const markAsReadSilently = React.useCallback(
+    async (bookmarkId) => {
+      if (!bookmarkId) return;
+
+      try {
+        // Direct API call without toast notifications
+        await apiClient.updateBookmark(bookmarkId, { is_read: true });
+
+        // Manually update the cache to reflect changes
+        queryClient.invalidateQueries({
+          queryKey: bookmarkKeys.detail(bookmarkId),
+        });
+      } catch (err) {
+        console.error("Failed to mark bookmark as read:", err);
+      }
+    },
+    [queryClient],
+  );
+
+  // Mark as read once when first rendered with valid bookmark
   useEffect(() => {
-    // Mark as read when opened
     if (bookmark && !bookmark.is_read) {
-      updateBookmark.mutate({
-        id: bookmark.id,
-        is_read: true,
-      });
+      markAsReadSilently(bookmark.id);
     }
-  }, [bookmark?.id]);
+  }, [bookmark, markAsReadSilently]);
 
   if (!bookmark) return null;
 
@@ -77,19 +98,63 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
     window.open(bookmark.url, "_blank");
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(bookmark.url);
-    // Show toast notification
+  const handleCopyLink = (e) => {
+    e && e.preventDefault();
+    e && e.stopPropagation();
+    navigator.clipboard
+      .writeText(bookmark.url)
+      .then(() => {
+        // Create and show a temporary toast notification
+        const toast = document.createElement("div");
+        toast.className =
+          "fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50";
+        toast.textContent = "URL copied to clipboard";
+        document.body.appendChild(toast);
+
+        // Remove the toast after 2 seconds
+        setTimeout(() => {
+          toast.classList.add(
+            "opacity-0",
+            "transition-opacity",
+            "duration-500",
+          );
+          setTimeout(() => document.body.removeChild(toast), 500);
+        }, 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to copy: ", err);
+      });
   };
 
-  const handleShare = () => {
+  const handleShare = (e) => {
+    e && e.preventDefault();
+    e && e.stopPropagation();
     if (navigator.share) {
-      navigator.share({
-        title: bookmark.title,
-        text: bookmark.description,
-        url: bookmark.url,
-      });
+      navigator
+        .share({
+          title: bookmark.title,
+          text: bookmark.description,
+          url: bookmark.url,
+        })
+        .catch((err) => {
+          console.error("Share failed:", err);
+          // Fall back to copy if sharing fails
+          handleCopyLink();
+        });
     } else {
+      // Show a message and fall back to copy
+      const toast = document.createElement("div");
+      toast.className =
+        "fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50";
+      toast.textContent = "Sharing not supported - URL copied to clipboard";
+      document.body.appendChild(toast);
+
+      // Remove the toast after 2 seconds
+      setTimeout(() => {
+        toast.classList.add("opacity-0", "transition-opacity", "duration-500");
+        setTimeout(() => document.body.removeChild(toast), 500);
+      }, 2000);
+
       handleCopyLink();
     }
   };
@@ -146,8 +211,10 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
               />
             </button>
             <button
-              onClick={handleShare}
+              onClick={(e) => handleShare(e)}
               className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              aria-label="Share"
+              title="Share this bookmark"
             >
               <FiShare2 className="w-5 h-5" />
             </button>
@@ -167,8 +234,13 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
                     className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg py-2 z-20"
                   >
                     <button
-                      onClick={handleCopyLink}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCopyLink(e);
+                        setIsMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                     >
                       <FiCopy className="mr-2 w-4 h-4" />
                       Copy link
@@ -232,14 +304,18 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
                 <FiExternalLink className="w-5 h-5" />
               </button>
               <button
-                onClick={handleCopyLink}
+                onClick={(e) => handleCopyLink(e)}
                 className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                aria-label="Copy link"
+                title="Copy link to clipboard"
               >
                 <FiCopy className="w-5 h-5" />
               </button>
               <button
-                onClick={handleShare}
+                onClick={(e) => handleShare(e)}
                 className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                aria-label="Share"
+                title="Share this bookmark"
               >
                 <FiShare2 className="w-5 h-5" />
               </button>

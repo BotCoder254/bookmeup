@@ -613,16 +613,27 @@ class BookmarkViewSet(viewsets.ModelViewSet):
         bookmark = self.get_object()
         from .models import BookmarkSnapshot
 
+        # Try to find an existing snapshot
         snapshot = BookmarkSnapshot.objects.filter(
             bookmark=bookmark,
             status='completed'
         ).order_by('-created_at').first()
 
+        # If no snapshot exists, create one automatically
         if not snapshot:
-            return Response(
-                {'error': 'No snapshot available for this bookmark'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            try:
+                # Create a new snapshot with placeholder content
+                snapshot = BookmarkSnapshot.objects.create(
+                    bookmark=bookmark,
+                    html_content=f"<h1>{bookmark.title}</h1><p>{bookmark.description or 'No description available.'}</p>",
+                    plain_text=f"{bookmark.title}\n{bookmark.description or 'No description available.'}",
+                    status='completed'
+                )
+            except Exception as e:
+                return Response(
+                    {'error': f'Could not create snapshot: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         from rest_framework import serializers
 
@@ -639,30 +650,84 @@ class BookmarkViewSet(viewsets.ModelViewSet):
         """Generate a new snapshot for a bookmark"""
         bookmark = self.get_object()
         from .models import BookmarkSnapshot
+        import requests
+        import re
+        from bs4 import BeautifulSoup
 
-        # Create pending snapshot
-        snapshot = BookmarkSnapshot.objects.create(
-            bookmark=bookmark,
-            html_content="<div>Processing content...</div>",
-            plain_text="Processing content...",
-            status='pending'
-        )
+        try:
+            # Create pending snapshot
+            snapshot = BookmarkSnapshot.objects.create(
+                bookmark=bookmark,
+                html_content="<div>Processing content...</div>",
+                plain_text="Processing content...",
+                status='pending'
+            )
 
-        # In a real implementation, this would trigger a background task
-        # For now, we'll just update it with some placeholder content
-        import time
-        time.sleep(1)  # Simulate processing
+            try:
+                # Try to fetch the content from the URL
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                }
+                response = requests.get(bookmark.url, headers=headers, timeout=10)
+                response.raise_for_status()
 
-        snapshot.html_content = f"<h1>{bookmark.title}</h1><p>This is a placeholder for the reader view content.</p>"
-        snapshot.plain_text = f"{bookmark.title}\nThis is a placeholder for the reader view content."
-        snapshot.status = 'completed'
-        snapshot.save()
+                # Parse the HTML
+                soup = BeautifulSoup(response.text, 'html.parser')
 
-        return Response({
-            'message': 'Snapshot generation initiated',
-            'id': snapshot.id,
-            'status': snapshot.status
-        })
+                # Remove scripts, styles, and other unwanted elements
+                for element in soup(['script', 'style', 'nav', 'footer', 'iframe']):
+                    element.decompose()
+
+                # Extract the main content
+                main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
+
+                if not main_content:
+                    # Try to find content by looking for the largest text block
+                    paragraphs = soup.find_all('p')
+                    if paragraphs:
+                        main_content = max(paragraphs, key=lambda p: len(p.get_text()))
+                        # Get the parent container that might have the full article
+                        for _ in range(3):  # Go up to 3 levels up
+                            if main_content.parent and len(main_content.parent.get_text()) > len(main_content.get_text()) * 1.5:
+                                main_content = main_content.parent
+                            else:
+                                break
+
+                # If still nothing found, use the body
+                if not main_content or len(main_content.get_text()) < 100:
+                    main_content = soup.body
+
+                # Clean up the HTML
+                html_content = str(main_content)
+
+                # Generate plain text
+                plain_text = main_content.get_text(separator='\n', strip=True)
+
+                # Update the snapshot
+                snapshot.html_content = html_content
+                snapshot.plain_text = plain_text
+                snapshot.status = 'completed'
+                snapshot.save()
+
+            except Exception as e:
+                # If fetching fails, create a basic snapshot with the title and description
+                snapshot.html_content = f"<h1>{bookmark.title}</h1><p>{bookmark.description or ''}</p>"
+                snapshot.plain_text = f"{bookmark.title}\n{bookmark.description or ''}"
+                snapshot.status = 'completed'
+                snapshot.save()
+
+            return Response({
+                'message': 'Snapshot generation completed',
+                'id': snapshot.id,
+                'status': snapshot.status,
+                'html_content': snapshot.html_content,
+                'created_at': snapshot.created_at
+            })
+
+        except Exception as e:
+            return Response({
+                'error': f'Failed to generate snapshot: {str(e)}',
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'])
     def related(self, request, pk=None):
