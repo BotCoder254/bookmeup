@@ -20,6 +20,7 @@ import {
   FiArrowLeft,
   FiLink,
   FiPieChart,
+  FiBookmark,
 } from "react-icons/fi";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/Tabs";
 import { useToast } from "../../../contexts";
@@ -44,6 +45,7 @@ import NotesPanel from "./NotesPanel";
 import ReaderView from "./ReaderView";
 import RelatedBookmarks from "./RelatedBookmarks";
 import MetadataPanel from "./MetadataPanel";
+import HighlightsPanel from "./HighlightsPanel";
 
 const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
   const [activeTab, setActiveTab] = useState("summary");
@@ -404,6 +406,13 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
                   Notes
                 </TabsTrigger>
                 <TabsTrigger
+                  value="highlights"
+                  className="flex-1 py-3 px-4 text-sm font-medium"
+                >
+                  <FiBookmark className="w-4 h-4 mr-2" />
+                  Highlights
+                </TabsTrigger>
+                <TabsTrigger
                   value="analytics"
                   className="flex-1 py-3 px-4 text-sm font-medium"
                 >
@@ -509,6 +518,10 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
 
               <TabsContent value="notes" className="p-4 h-full">
                 <NotesPanel bookmarkId={bookmark.id} />
+              </TabsContent>
+
+              <TabsContent value="highlights" className="h-full">
+                <HighlightsPanel bookmarkId={bookmark.id} />
               </TabsContent>
 
               <TabsContent value="analytics" className="p-4 h-full">

@@ -5,6 +5,7 @@ from django.utils.text import slugify
 from django.db.models import Q
 import uuid
 import json
+from django.utils import timezone
 
 
 class Tag(models.Model):
@@ -400,3 +401,23 @@ class BoardLayout(models.Model):
             )
             return new_layout
         return None
+
+
+class BookmarkHistoryEntry(models.Model):
+    """Tracks browsing history of bookmarks"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bookmark = models.ForeignKey(Bookmark, on_delete=models.CASCADE, related_name='history_entries')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookmark_history')
+    visited_at = models.DateTimeField(default=timezone.now)
+    referrer = models.URLField(blank=True, null=True)  # Where the user came from
+    device_info = models.JSONField(default=dict, blank=True)  # Browser, OS, etc.
+
+    class Meta:
+        ordering = ['-visited_at']
+        indexes = [
+            models.Index(fields=['user', 'visited_at']),
+            models.Index(fields=['bookmark', 'visited_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} visited {self.bookmark.title} on {self.visited_at.strftime('%Y-%m-%d %H:%M')}"

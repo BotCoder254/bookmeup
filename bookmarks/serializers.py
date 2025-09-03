@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout
+from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout, BookmarkHighlight, BookmarkNote, BookmarkHistoryEntry
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -170,6 +170,57 @@ class BoardLayoutSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'is_active', 'version'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'version']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class BookmarkNoteSerializer(serializers.ModelSerializer):
+    """Serializer for bookmark notes"""
+
+    class Meta:
+        model = BookmarkNote
+        fields = [
+            'id', 'bookmark', 'content', 'plain_text',
+            'created_at', 'updated_at', 'is_active'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class BookmarkHighlightSerializer(serializers.ModelSerializer):
+    """Serializer for bookmark highlights/annotations"""
+
+    class Meta:
+        model = BookmarkHighlight
+        fields = [
+            'id', 'bookmark', 'text', 'note', 'color', 'position_data',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class BookmarkHistoryEntrySerializer(serializers.ModelSerializer):
+    """Serializer for browser history entries"""
+    bookmark_title = serializers.CharField(source='bookmark.title', read_only=True)
+    bookmark_url = serializers.CharField(source='bookmark.url', read_only=True)
+    bookmark_favicon = serializers.CharField(source='bookmark.favicon_url', read_only=True)
+
+    class Meta:
+        model = BookmarkHistoryEntry
+        fields = [
+            'id', 'bookmark', 'bookmark_title', 'bookmark_url', 'bookmark_favicon',
+            'visited_at', 'referrer', 'device_info'
+        ]
+        read_only_fields = ['id', 'visited_at']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user

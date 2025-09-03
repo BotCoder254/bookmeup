@@ -1,24 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   FiExternalLink,
   FiRefreshCw,
   FiBook,
   FiAlertCircle,
+  FiBookmark,
 } from "react-icons/fi";
 import { apiClient } from "../../../utils/api";
+import { BookmarkHighlighter } from "../../../components/highlights";
 
 const ReaderView = ({ bookmarkId, url }) => {
   const [snapshot, setSnapshot] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [highlights, setHighlights] = useState([]);
+  const contentRef = useRef(null);
 
-  useEffect(() => {
-    if (bookmarkId) {
-      fetchSnapshot();
-    }
-  }, [bookmarkId]);
-
-  const fetchSnapshot = async () => {
+  const fetchSnapshot = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -36,7 +34,23 @@ const ReaderView = ({ bookmarkId, url }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [bookmarkId]);
+
+  const fetchHighlights = useCallback(async () => {
+    try {
+      const response = await apiClient.getBookmarkHighlights(bookmarkId);
+      setHighlights(response.results || []);
+    } catch (err) {
+      console.error("Error fetching highlights:", err);
+    }
+  }, [bookmarkId]);
+
+  useEffect(() => {
+    if (bookmarkId) {
+      fetchSnapshot();
+      fetchHighlights();
+    }
+  }, [bookmarkId, fetchSnapshot, fetchHighlights]);
 
   const generateSnapshot = async () => {
     setIsLoading(true);
@@ -156,17 +170,44 @@ const ReaderView = ({ bookmarkId, url }) => {
             <FiExternalLink className="w-3 h-3 mr-1" />
             Original
           </a>
+          <div className="flex items-center text-xs px-2 py-1 text-yellow-600 dark:text-yellow-400">
+            <FiBookmark className="w-3 h-3 mr-1" />
+            <span>{highlights.length} highlights</span>
+          </div>
         </div>
       </div>
 
       {/* Reader Content */}
-      <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 relative">
         <div className="mx-auto max-w-prose">
           {snapshot.html_content ? (
-            <div
-              className="prose dark:prose-invert prose-headings:font-semibold prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-img:rounded-lg prose-img:max-w-full"
-              dangerouslySetInnerHTML={{ __html: snapshot.html_content }}
-            />
+            <>
+              <div
+                ref={contentRef}
+                className="prose dark:prose-invert prose-headings:font-semibold prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-img:rounded-lg prose-img:max-w-full"
+                dangerouslySetInnerHTML={{ __html: snapshot.html_content }}
+              />
+              <BookmarkHighlighter
+                bookmarkId={bookmarkId}
+                existingHighlights={highlights}
+                contentRef={contentRef}
+                onHighlightCreated={(highlight) => {
+                  setHighlights((prev) => [...prev, highlight]);
+                }}
+                onHighlightUpdated={(updatedHighlight) => {
+                  setHighlights((prev) =>
+                    prev.map((h) =>
+                      h.id === updatedHighlight.id ? updatedHighlight : h,
+                    ),
+                  );
+                }}
+                onHighlightDeleted={(highlightId) => {
+                  setHighlights((prev) =>
+                    prev.filter((h) => h.id !== highlightId),
+                  );
+                }}
+              />
+            </>
           ) : (
             <div className="text-gray-500 dark:text-gray-400 text-center py-8">
               Content could not be loaded. Try refreshing the reader view.

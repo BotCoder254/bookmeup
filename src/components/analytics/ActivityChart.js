@@ -9,13 +9,15 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
+  Legend,
 } from "recharts";
 import { useMediaQuery } from "react-responsive";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "../../utils";
 import LoadingSpinner from "../LoadingSpinner";
 
-// Placeholder data - in a real app, this would come from API
-const generateActivityData = (timeRange) => {
+// Process activity data from the API
+const processActivityData = (activities, timeRange) => {
   let data = [];
   let numEntries = 0;
   let dateFormat = "";
@@ -42,9 +44,13 @@ const generateActivityData = (timeRange) => {
       dateFormat = "MMM D";
   }
 
-  // For demo purposes, we'll generate some random data
+  // Create date buckets for the time range
+  const dateBuckets = new Map();
+  const today = new Date();
+
+  // Initialize all buckets with zeros
   for (let i = 0; i < numEntries; i++) {
-    const date = new Date();
+    const date = new Date(today);
 
     if (timeRange === "week") {
       date.setDate(date.getDate() - (numEntries - i - 1));
@@ -56,33 +62,49 @@ const generateActivityData = (timeRange) => {
       date.setMonth(date.getMonth() - (numEntries - i - 1) * 3);
     }
 
-    // Format the date based on timeRange
     const formattedDate = formatDate(date, dateFormat);
-
-    // Generate random values
-    const added = Math.floor(Math.random() * 10) + 1;
-    const visited = Math.floor(Math.random() * 15);
-
-    data.push({
+    dateBuckets.set(formattedDate, {
       name: formattedDate,
-      Added: added,
-      Visited: visited,
+      Added: 0,
+      Visited: 0,
     });
   }
 
-  return data;
+  // Process activity data if available
+  if (activities && activities.length) {
+    activities.forEach((activity) => {
+      const date = new Date(activity.timestamp);
+      const formattedDate = formatDate(date, dateFormat);
+
+      // Only process if the date is within our range
+      if (dateBuckets.has(formattedDate)) {
+        const bucket = dateBuckets.get(formattedDate);
+
+        if (activity.activity_type === "created") {
+          bucket.Added += 1;
+        } else if (activity.activity_type === "visited") {
+          bucket.Visited += 1;
+        }
+
+        dateBuckets.set(formattedDate, bucket);
+      }
+    });
+  }
+
+  // Convert map to array for the chart
+  return Array.from(dateBuckets.values());
 };
 
 const formatDate = (date, format) => {
   // Simple date formatter
   const day = date.getDate();
-  const month = date.toLocaleString('default', { month: 'short' });
+  const month = date.toLocaleString("default", { month: "short" });
   const year = date.getFullYear();
-  const weekday = date.toLocaleString('default', { weekday: 'short' });
+  const weekday = date.toLocaleString("default", { weekday: "short" });
 
-  if (format === 'ddd') return weekday;
-  if (format === 'MMM') return month;
-  if (format === 'MMM D') return `${month} ${day}`;
+  if (format === "ddd") return weekday;
+  if (format === "MMM") return month;
+  if (format === "MMM D") return `${month} ${day}`;
   return `${month} ${year}`;
 };
 
@@ -90,23 +112,53 @@ const ActivityChart = ({ timeRange = "month" }) => {
   const [activityData, setActivityData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showInfo, setShowInfo] = useState(false);
+  const { data: activities, isLoading: activitiesLoading } = useQuery({
+    queryKey: ["activities", timeRange],
+    queryFn: async () => {
+      // Calculate date range based on timeRange
+      const now = new Date();
+      let startDate = new Date();
+
+      if (timeRange === "week") {
+        startDate.setDate(now.getDate() - 7);
+      } else if (timeRange === "month") {
+        startDate.setDate(now.getDate() - 30);
+      } else if (timeRange === "year") {
+        startDate.setMonth(now.getMonth() - 12);
+      } else {
+        startDate.setFullYear(now.getFullYear() - 3);
+      }
+
+      // Format dates for API
+      const startDateStr = startDate.toISOString().split("T")[0];
+
+      // Fetch activities within date range
+      return await apiClient.getActivities({
+        from_date: startDateStr,
+        limit: 1000, // Get enough data for meaningful charts
+      });
+    },
+  });
 
   const isMobile = useMediaQuery({ maxWidth: 768 });
 
   useEffect(() => {
-    // Simulate API request
-    setIsLoading(true);
-    setTimeout(() => {
-      setActivityData(generateActivityData(timeRange));
+    if (!activitiesLoading && activities) {
+      setIsLoading(true);
+      // Process real data instead of generating fake data
+      const processedData = processActivityData(activities.results, timeRange);
+      setActivityData(processedData);
       setIsLoading(false);
-    }, 800);
-  }, [timeRange]);
+    }
+  }, [activities, activitiesLoading, timeRange]);
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 shadow-lg rounded-md">
-          <p className="font-medium text-gray-700 dark:text-gray-300">{label}</p>
+          <p className="font-medium text-gray-700 dark:text-gray-300">
+            {label}
+          </p>
           {payload.map((entry, index) => (
             <div key={index} className="flex items-center mt-2">
               <div
@@ -154,8 +206,8 @@ const ActivityChart = ({ timeRange = "month" }) => {
           className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 p-3 rounded-md mb-4 text-sm"
         >
           <p>
-            This chart shows the number of bookmarks added and visited over time.
-            You can change the time range using the controls above.
+            This chart shows the number of bookmarks added and visited over
+            time. You can change the time range using the controls above.
           </p>
         </motion.div>
       )}

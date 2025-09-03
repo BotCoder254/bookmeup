@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { apiClient } from "../../utils";
 import { motion } from "framer-motion";
 import { FiTag, FiInfo } from "react-icons/fi";
 import {
@@ -11,20 +12,26 @@ import {
   Sector,
 } from "recharts";
 import { useMediaQuery } from "react-responsive";
+import { useQuery } from "@tanstack/react-query";
 import LoadingSpinner from "../LoadingSpinner";
 
-// Placeholder data - in a real app, this would come from API
-const generateTagData = () => {
-  const tags = [
-    { name: "Development", value: 25 },
-    { name: "Design", value: 18 },
-    { name: "News", value: 15 },
-    { name: "Research", value: 12 },
-    { name: "Learning", value: 10 },
-    { name: "Other", value: 20 },
-  ];
+// Process tag data from the API
+const processTagData = (tags) => {
+  // Ensure tags is an array
+  if (!tags || !Array.isArray(tags) || tags.length === 0) {
+    console.log("No valid tags array to process:", tags);
+    return [];
+  }
 
-  return tags;
+  // Create data array for the chart
+  return tags
+    .filter((tag) => tag && typeof tag === "object") // Ensure each tag is a valid object
+    .map((tag) => ({
+      name: tag.name || "Unnamed Tag",
+      value: tag.bookmark_count || 0,
+      color: tag.color || "#6366f1",
+    }))
+    .sort((a, b) => b.value - a.value);
 };
 
 const COLORS = [
@@ -47,14 +54,39 @@ const TagDistributionChart = () => {
 
   const isMobile = useMediaQuery({ maxWidth: 768 });
 
+  // Fetch real tag data from API
+  const { data: tagApiData, isLoading: tagsLoading } = useQuery({
+    queryKey: ["tags"],
+    queryFn: async () => {
+      return await apiClient.getTags();
+    },
+  });
+
   useEffect(() => {
-    // Simulate API request
-    setIsLoading(true);
-    setTimeout(() => {
-      setTagData(generateTagData());
+    if (!tagsLoading && tagApiData) {
+      setIsLoading(true);
+      // Process real data instead of generating fake data
+      // Handle different possible response structures
+      let tagsToProcess = [];
+
+      // Check if tagApiData is an array directly
+      if (Array.isArray(tagApiData)) {
+        tagsToProcess = tagApiData;
+      }
+      // Check if tagApiData has a results array
+      else if (tagApiData.results && Array.isArray(tagApiData.results)) {
+        tagsToProcess = tagApiData.results;
+      }
+      // Check if tagApiData has a tags array
+      else if (tagApiData.tags && Array.isArray(tagApiData.tags)) {
+        tagsToProcess = tagApiData.tags;
+      }
+
+      const processedData = processTagData(tagsToProcess);
+      setTagData(processedData);
       setIsLoading(false);
-    }, 800);
-  }, []);
+    }
+  }, [tagApiData, tagsLoading]);
 
   const onPieEnter = (_, index) => {
     setActiveIndex(index);
@@ -131,7 +163,7 @@ const TagDistributionChart = () => {
               fill="#999"
               className="text-xs"
             >
-              {`(${(percent * 100).toFixed(2)}%)`}
+              {`(${percent ? (percent * 100).toFixed(2) : 0}%)`}
             </text>
           </>
         )}
@@ -141,13 +173,19 @@ const TagDistributionChart = () => {
 
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
+      const totalValue = tagData.reduce((a, b) => a + (b.value || 0), 0);
+      const percentage =
+        totalValue > 0
+          ? ((payload[0].value / totalValue) * 100).toFixed(1)
+          : "0";
+
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 shadow-lg rounded-md">
           <p className="font-medium text-gray-700 dark:text-gray-300">
             {payload[0].name}
           </p>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            {`Value: ${payload[0].value} (${((payload[0].value / tagData.reduce((a, b) => a + b.value, 0)) * 100).toFixed(1)}%)`}
+            {`Value: ${payload[0].value} (${percentage}%)`}
           </p>
         </div>
       );
@@ -191,33 +229,43 @@ const TagDistributionChart = () => {
         </motion.div>
       )}
 
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              activeIndex={activeIndex}
-              activeShape={renderActiveShape}
-              data={tagData}
-              cx="50%"
-              cy="50%"
-              innerRadius={isMobile ? 60 : 70}
-              outerRadius={isMobile ? 80 : 90}
-              fill="#8884d8"
-              dataKey="value"
-              onMouseEnter={onPieEnter}
-              paddingAngle={1}
-            >
-              {tagData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={COLORS[index % COLORS.length]}
-                />
-              ))}
-            </Pie>
-            <Tooltip content={<CustomTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
+      {tagData.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-72 text-gray-500 dark:text-gray-400">
+          <FiTag className="w-12 h-12 mb-2 opacity-50" />
+          <p>No tags data available.</p>
+          <p className="text-sm mt-2">
+            Add tags to your bookmarks to see them here.
+          </p>
+        </div>
+      ) : (
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                activeIndex={activeIndex}
+                activeShape={renderActiveShape}
+                data={tagData}
+                cx="50%"
+                cy="50%"
+                innerRadius={isMobile ? 60 : 70}
+                outerRadius={isMobile ? 80 : 90}
+                fill="#8884d8"
+                dataKey="value"
+                onMouseEnter={onPieEnter}
+                paddingAngle={1}
+              >
+                {tagData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.color || COLORS[index % COLORS.length]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 };

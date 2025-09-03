@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
-from datetime import timedelta
+from datetime import timedelta, datetime
 import hashlib
 import logging
 
@@ -16,12 +16,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 
-from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout
+from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout, BookmarkHighlight, BookmarkNote, BookmarkHistoryEntry
 from .serializers import (
     BookmarkSerializer, TagSerializer, CollectionSerializer,
     BookmarkActivitySerializer, UserSerializer, BookmarkCreateSerializer,
     BookmarkStatsSerializer, SavedViewSerializer, SearchResultSerializer,
-    SearchSuggestionSerializer, BoardLayoutSerializer
+    SearchSuggestionSerializer, BoardLayoutSerializer, BookmarkHighlightSerializer,
+    BookmarkNoteSerializer, BookmarkHistoryEntrySerializer
 )
 from .utils import enrich_url
 from .search import BookmarkSearchEngine, get_search_syntax_help
@@ -458,11 +459,11 @@ class BookmarkViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def toggle_archive(self, request, pk=None):
-        """Toggle bookmark archive status"""
         bookmark = self.get_object()
         bookmark.is_archived = not bookmark.is_archived
         bookmark.save()
 
+        # Record activity
         activity_type = 'archived' if bookmark.is_archived else 'unarchived'
         BookmarkActivity.objects.create(
             bookmark=bookmark,
@@ -470,7 +471,41 @@ class BookmarkViewSet(viewsets.ModelViewSet):
             activity_type=activity_type
         )
 
-        return Response({'is_archived': bookmark.is_archived})
+        serializer = self.get_serializer(bookmark)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get', 'post'])
+    def annotations(self, request, pk=None):
+        bookmark = self.get_object()
+
+        if request.method == 'GET':
+            highlights = BookmarkHighlight.objects.filter(
+                bookmark=bookmark,
+                user=request.user
+            )
+            serializer = BookmarkHighlightSerializer(highlights, many=True)
+            return Response(serializer.data)
+
+        elif request.method == 'POST':
+            data = request.data.copy()
+            data['bookmark'] = bookmark.id
+            serializer = BookmarkHighlightSerializer(data=data, context={'request': request})
+
+            if serializer.is_valid():
+                serializer.save()
+                # Record visit/activity
+                bookmark.visited_at = datetime.now()
+                bookmark.save()
+
+                BookmarkActivity.objects.create(
+                    bookmark=bookmark,
+                    user=request.user,
+                    activity_type='visited',
+                    metadata={'action': 'added_highlight'}
+                )
+
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def visit(self, request, pk=None):
@@ -1364,6 +1399,56 @@ def bookmark_stats(request):
 
     serializer = BookmarkStatsSerializer(stats)
     return Response(serializer.data)
+
+
+class BookmarkHighlightViewSet(viewsets.ModelViewSet):
+    """ViewSet for bookmark highlights/annotations"""
+    serializer_class = BookmarkHighlightSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """Return highlights for the current user"""
+        return BookmarkHighlight.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+        # Log activity when highlight is created
+        bookmark = serializer.validated_data.get('bookmark')
+        BookmarkActivity.objects.create(
+            bookmark=bookmark,
+            user=self.request.user,
+            activity_type='visited',
+            metadata={'action': 'created_highlight'}
+        )
+
+
+class BookmarkHistoryViewSet(viewsets.ModelViewSet):
+    """ViewSet for bookmark browsing history"""
+    serializer_class = BookmarkHistoryEntrySerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """Return history entries for the current user"""
+        return BookmarkHistoryEntry.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+        # Update the bookmark's visited_at time
+        bookmark = serializer.validated_data.get('bookmark')
+        bookmark.visited_at = timezone.now()
+        bookmark.save(update_fields=['visited_at'])
+
+        # Log activity
+        BookmarkActivity.objects.create(
+            bookmark=bookmark,
+            user=self.request.user,
+            activity_type='visited',
+            metadata={'from_history': True}
+        )
 
 
 class BoardLayoutViewSet(viewsets.ModelViewSet):

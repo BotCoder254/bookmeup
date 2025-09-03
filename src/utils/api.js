@@ -321,6 +321,50 @@ class ApiClient {
     return this.request(`/bookmarks/${bookmarkId}/related/`);
   }
 
+  // Highlight methods
+  async getBookmarkHighlights(bookmarkId) {
+    return this.request(`/bookmarks/${bookmarkId}/highlights/`);
+  }
+
+  async createHighlight(bookmarkId, highlightData) {
+    return this.request(`/bookmarks/${bookmarkId}/highlights/`, {
+      method: "POST",
+      body: highlightData,
+    });
+  }
+
+  async updateHighlight(id, highlightData) {
+    return this.request(`/highlights/${id}/`, {
+      method: "PATCH",
+      body: highlightData,
+    });
+  }
+
+  async deleteHighlight(id) {
+    return this.request(`/highlights/${id}/`, {
+      method: "DELETE",
+    });
+  }
+
+  // History methods
+  async getBookmarkHistory() {
+    return this.request(`/history/`);
+  }
+
+  async addToHistory(bookmarkId, historyData = {}) {
+    return this.request(`/bookmarks/${bookmarkId}/history/`, {
+      method: "POST",
+      body: {
+        bookmark: bookmarkId,
+        device_info: {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+        },
+        ...historyData,
+      },
+    });
+  }
+
   // Tag methods
   // Tags
   async getTags() {

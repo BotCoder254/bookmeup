@@ -9,6 +9,8 @@ router.register(r'collections', views.CollectionViewSet, basename='collection')
 router.register(r'activities', views.BookmarkActivityViewSet, basename='activity')
 router.register(r'saved-views', views.SavedViewViewSet, basename='saved-view')
 router.register(r'board-layouts', views.BoardLayoutViewSet, basename='board-layout')
+router.register(r'highlights', views.BookmarkHighlightViewSet, basename='highlight')
+router.register(r'history', views.BookmarkHistoryViewSet, basename='history')
 
 urlpatterns = [
     # Authentication endpoints
@@ -36,4 +38,10 @@ urlpatterns = [
 
     # API endpoints
     path('', include(router.urls)),
+
+    # Highlights endpoint
+    path('bookmarks/<uuid:bookmark_id>/highlights/', views.BookmarkHighlightViewSet.as_view({'get': 'list', 'post': 'create'}), name='bookmark-highlights'),
+
+    # History endpoint
+    path('bookmarks/<uuid:bookmark_id>/history/', views.BookmarkHistoryViewSet.as_view({'get': 'list', 'post': 'create'}), name='bookmark-history'),
 ]
