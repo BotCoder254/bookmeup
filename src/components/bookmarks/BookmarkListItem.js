@@ -9,6 +9,10 @@ import {
   FiTrash2,
   FiFolder,
   FiClock,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiRotateCw,
+  FiLink,
 } from "react-icons/fi";
 import {
   useToggleFavorite,
@@ -168,6 +172,13 @@ const BookmarkListItem = ({ bookmark }) => {
                       )}
                     </div>
                   )}
+
+                {/* Link Health Indicator */}
+                {bookmark.health_status && (
+                  <div className="flex items-center mt-2">
+                    {renderHealthIndicator(bookmark.health_status)}
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
@@ -285,6 +296,56 @@ const BookmarkListItem = ({ bookmark }) => {
         )}
       </AnimatePresence>
     </>
+  );
+};
+
+// Helper function to render health status indicator
+const renderHealthIndicator = (healthStatus) => {
+  let icon = null;
+  let label = "";
+  let colorClass = "";
+
+  switch (healthStatus.status) {
+    case "ok":
+      icon = <FiCheckCircle className="w-3 h-3" />;
+      label = "Link is healthy";
+      colorClass = "text-green-500";
+      break;
+    case "redirected":
+      icon = <FiRotateCw className="w-3 h-3" />;
+      label = "Link is redirected";
+      colorClass = "text-yellow-500";
+      break;
+    case "broken":
+      icon = <FiAlertCircle className="w-3 h-3" />;
+      label = "Link is broken";
+      colorClass = "text-red-500";
+      break;
+    case "archived":
+      icon = <FiLink className="w-3 h-3" />;
+      label = "Archive available";
+      colorClass = "text-blue-500";
+      break;
+    default:
+      return null;
+  }
+
+  return (
+    <div className={`flex items-center text-xs ${colorClass}`} title={label}>
+      {icon}
+      <span className="ml-1">{label}</span>
+      {healthStatus.has_archive && healthStatus.archive_url && (
+        <a
+          href={healthStatus.archive_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-2 text-blue-500 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          View Archive
+        </a>
+      )}
+    </div>
   );
 };
 

@@ -11,22 +11,26 @@ import hashlib
 import logging
 
 from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 
-from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout, BookmarkHighlight, BookmarkNote, BookmarkHistoryEntry
+from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout, BookmarkHighlight, BookmarkNote, BookmarkHistoryEntry, LinkHealth
 from .serializers import (
     BookmarkSerializer, TagSerializer, CollectionSerializer,
     BookmarkActivitySerializer, UserSerializer, BookmarkCreateSerializer,
     BookmarkStatsSerializer, SavedViewSerializer, SearchResultSerializer,
     SearchSuggestionSerializer, BoardLayoutSerializer, BookmarkHighlightSerializer,
-    BookmarkNoteSerializer, BookmarkHistoryEntrySerializer
+    BookmarkNoteSerializer, BookmarkHistoryEntrySerializer, LinkHealthSerializer,
+    LinkHealthStatsSerializer, BulkActionJobSerializer
 )
 from .utils import enrich_url
 from .search import BookmarkSearchEngine, get_search_syntax_help
 from .duplicates import DuplicateManager
+from .link_health import LinkHealthChecker, LinkHealthRepair, get_bookmark_health_summary, run_link_health_check
+from .bulk_actions import create_bulk_action_job, process_bulk_action_job, get_bulk_action_job
 import time
 
 logger = logging.getLogger(__name__)
@@ -373,6 +377,7 @@ class BookmarkViewSet(viewsets.ModelViewSet):
         date_from = self.request.query_params.get('date_from')
         date_to = self.request.query_params.get('date_to')
         read_state = self.request.query_params.get('read_state')
+        health_status = self.request.query_params.get('health_status')
 
         if is_favorite is not None:
             queryset = queryset.filter(is_favorite=is_favorite.lower() == 'true')
@@ -401,11 +406,30 @@ class BookmarkViewSet(viewsets.ModelViewSet):
             elif read_state.lower() == 'unread':
                 queryset = queryset.filter(visited_at__isnull=True)
 
+        # Filter by link health status
+        if health_status:
+            if health_status == 'broken':
+                queryset = queryset.filter(health__status='broken')
+            elif health_status == 'redirected':
+                queryset = queryset.filter(health__status='redirected')
+            elif health_status == 'ok':
+                queryset = queryset.filter(health__status='ok')
+            elif health_status == 'pending':
+                queryset = queryset.filter(health__status='pending')
+            elif health_status == 'unchecked':
+                queryset = queryset.filter(health__isnull=True)
+
         # Filter by duplicate IDs if they exist in the filter
         # This is used by the Duplicates smart view
         duplicate_ids = self.request.query_params.getlist('duplicate_ids')
         if duplicate_ids:
             queryset = queryset.filter(id__in=duplicate_ids)
+
+        # Filter by broken link IDs if they exist in the filter
+        # This is used by the Broken Links smart view
+        broken_link_ids = self.request.query_params.getlist('broken_link_ids')
+        if broken_link_ids:
+            queryset = queryset.filter(id__in=broken_link_ids)
 
         if search:
             queryset = queryset.filter(
@@ -1451,6 +1475,101 @@ class BookmarkHistoryViewSet(viewsets.ModelViewSet):
         )
 
 
+class BulkActionJobViewSet(viewsets.ModelViewSet):
+    """ViewSet for bulk action jobs"""
+    serializer_class = BulkActionJobSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """Return bulk action jobs for the current user"""
+        return BulkActionJob.objects.filter(user=self.request.user)
+
+    def create(self, request):
+        """Create a new bulk action job"""
+        action_type = request.data.get('action_type')
+        bookmark_ids = request.data.get('bookmark_ids', [])
+        parameters = request.data.get('parameters', {})
+
+        # Validate action type
+        valid_action_types = [choice[0] for choice in BulkActionJob.ACTION_TYPES]
+        if action_type not in valid_action_types:
+            return Response(
+                {'error': f'Invalid action type. Must be one of: {", ".join(valid_action_types)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate bookmark IDs
+        if not bookmark_ids:
+            return Response(
+                {'error': 'No bookmarks selected'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create the job
+        job = create_bulk_action_job(
+            user=request.user,
+            action_type=action_type,
+            bookmark_ids=bookmark_ids,
+            parameters=parameters
+        )
+
+        # Start processing the job in the background
+        # In a production environment, you would use a task queue like Celery
+        # For now, we process it directly (blocking)
+        try:
+            process_bulk_action_job(job.id)
+        except Exception as e:
+            logger.error(f"Error processing bulk action job: {e}")
+
+        serializer = self.get_serializer(job)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a pending or processing job"""
+        job = self.get_object()
+
+        if job.status not in ['pending', 'processing']:
+            return Response(
+                {'error': 'Can only cancel pending or processing jobs'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        job.status = 'cancelled'
+        job.save(update_fields=['status', 'updated_at'])
+
+        serializer = self.get_serializer(job)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def retry(self, request, pk=None):
+        """Retry a failed job"""
+        job = self.get_object()
+
+        if job.status != 'failed':
+            return Response(
+                {'error': 'Can only retry failed jobs'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        job.status = 'pending'
+        job.error_message = ''
+        job.processed_items = 0
+        job.save(update_fields=['status', 'error_message', 'processed_items', 'updated_at'])
+
+        # Process the job
+        try:
+            process_bulk_action_job(job.id)
+        except Exception as e:
+            logger.error(f"Error processing bulk action job: {e}")
+
+        # Refresh the job from database
+        job.refresh_from_db()
+        serializer = self.get_serializer(job)
+        return Response(serializer.data)
+
+
 class BoardLayoutViewSet(viewsets.ModelViewSet):
     """ViewSet for Visual Bookmark Board layouts"""
     serializer_class = BoardLayoutSerializer
@@ -1518,3 +1637,194 @@ class BoardLayoutViewSet(viewsets.ModelViewSet):
         except BoardLayout.DoesNotExist:
             # Return empty success response - no layout exists yet
             return Response({})
+
+
+class LinkHealthViewSet(viewsets.ModelViewSet):
+    """ViewSet for bookmark link health status"""
+    serializer_class = LinkHealthSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """Return link health records for the current user's bookmarks"""
+        queryset = LinkHealth.objects.filter(bookmark__user=self.request.user)
+
+        # Filter by status if provided
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            if status_filter == 'broken':
+                queryset = queryset.filter(status__in=['broken'])
+            elif status_filter == 'redirected':
+                queryset = queryset.filter(status='redirected')
+            elif status_filter == 'ok':
+                queryset = queryset.filter(status='ok')
+
+        return queryset.order_by('-last_checked')
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get link health statistics"""
+        summary = get_bookmark_health_summary(user_id=request.user.id)
+        serializer = LinkHealthStatsSerializer(summary)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def check_links(self, request):
+        """Run link health check for user's bookmarks"""
+        # Get limit parameter with default of 10
+        limit = int(request.data.get('limit', 10))
+
+        # Run check
+        results = run_link_health_check(user_id=request.user.id, limit=limit)
+
+        # Count by status
+        status_counts = {}
+        for result in results:
+            if result:
+                status = result.status
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+        return Response({
+            'message': f'Checked {len(results)} links',
+            'status_counts': status_counts
+        })
+
+    @action(detail=True, methods=['post'])
+    def apply_redirect(self, request, pk=None):
+        """Apply redirect to update bookmark URL"""
+        health = self.get_object()
+
+        # Check if this is actually a redirect
+        if health.status != 'redirected' or not health.final_url:
+            return Response(
+                {'error': 'This link is not redirected or has no final URL'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Update the bookmark URL
+        repairer = LinkHealthRepair()
+        bookmark = repairer.apply_redirect(health.bookmark.id, request.user.id)
+
+        if bookmark:
+            return Response({
+                'message': 'Successfully updated bookmark URL',
+                'old_url': health.bookmark.url,
+                'new_url': bookmark.url,
+                'bookmark': BookmarkSerializer(bookmark, context={'request': request}).data
+            })
+        else:
+            return Response(
+                {'error': 'Failed to update bookmark URL'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def update_url(self, request, pk=None):
+        """Manually update a bookmark URL"""
+        health = self.get_object()
+        new_url = request.data.get('url')
+
+        if not new_url:
+            return Response(
+                {'error': 'New URL is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Update the bookmark URL
+        repairer = LinkHealthRepair()
+        bookmark = repairer.update_bookmark_url(health.bookmark.id, new_url, request.user.id)
+
+        if bookmark:
+            return Response({
+                'message': 'Successfully updated bookmark URL',
+                'old_url': health.bookmark.url,
+                'new_url': bookmark.url,
+                'bookmark': BookmarkSerializer(bookmark, context={'request': request}).data
+            })
+        else:
+            return Response(
+                {'error': 'Failed to update bookmark URL'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def broken_links_view(self, request):
+        """Get or create the Broken Links smart view"""
+        try:
+            # Check if the view already exists
+            broken_links_view = SavedView.objects.get(
+                user=request.user,
+                name="Broken Links"
+            )
+        except SavedView.DoesNotExist:
+            # Create the view if it doesn't exist
+            broken_links = Bookmark.objects.filter(
+                user=request.user,
+                health__status='broken'
+            )
+
+            # Generate a list of bookmark IDs that are broken
+            broken_link_ids = [str(b.id) for b in broken_links]
+
+            # Create the view
+            broken_links_view = SavedView.objects.create(
+                user=request.user,
+                name="Broken Links",
+                description=f"Links that need attention ({len(broken_link_ids)} found)",
+                filters={'broken_link_ids': broken_link_ids},
+                icon="alert-triangle",
+                is_system=True,
+                order=2  # Just below Duplicates in the sidebar
+            )
+
+        serializer = SavedViewSerializer(broken_links_view)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def check_health(self, request, bookmark_id=None):
+        """Check health for a specific bookmark"""
+        try:
+            # Get the bookmark
+            bookmark = Bookmark.objects.get(id=bookmark_id, user=request.user)
+
+            # Create or get link health record
+            try:
+                health = LinkHealth.objects.get(bookmark=bookmark)
+            except LinkHealth.DoesNotExist:
+                health = LinkHealth(bookmark=bookmark, status='pending', last_checked=timezone.now())
+                health.save()
+
+            # Run health check
+            checker = LinkHealthChecker()
+            result = checker.process_bookmark(bookmark)
+
+            # Handle case where process_bookmark returns None
+            if result is None:
+                # Update existing health record status
+                health.status = 'pending'
+                health.last_checked = timezone.now()
+                health.save()
+
+                return Response({
+                    'message': f'Health check initiated for {bookmark.title}',
+                    'status': 'pending',
+                    'bookmark': BookmarkSerializer(bookmark, context={'request': request}).data
+                })
+
+            # If we got a valid result, use it
+            return Response({
+                'message': f'Health check completed for {bookmark.title}',
+                'status': result.status,
+                'bookmark': BookmarkSerializer(bookmark, context={'request': request}).data
+            })
+        except Bookmark.DoesNotExist:
+            return Response(
+                {'error': 'Bookmark not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Health check error: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Failed to check link health: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

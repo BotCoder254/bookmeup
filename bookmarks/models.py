@@ -421,3 +421,149 @@ class BookmarkHistoryEntry(models.Model):
 
     def __str__(self):
         return f"{self.user.username} visited {self.bookmark.title} on {self.visited_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class BulkActionJob(models.Model):
+    """Tracks status of bulk actions on bookmarks"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    ACTION_TYPES = [
+        ('tag', 'Add Tags'),
+        ('untag', 'Remove Tags'),
+        ('move', 'Move to Collection'),
+        ('archive', 'Archive'),
+        ('unarchive', 'Unarchive'),
+        ('favorite', 'Favorite'),
+        ('unfavorite', 'Unfavorite'),
+        ('delete', 'Delete'),
+        ('mark_read', 'Mark as Read'),
+        ('mark_unread', 'Mark as Unread'),
+        ('check_health', 'Check Link Health'),
+        ('export', 'Export'),
+        ('merge', 'Merge Duplicates'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bulk_actions')
+    action_type = models.CharField(max_length=20, choices=ACTION_TYPES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    # Bookmark IDs as JSON array
+    bookmark_ids = models.JSONField(default=list)
+
+    # Action parameters as JSON object
+    parameters = models.JSONField(default=dict, blank=True)
+
+    # Results and metadata
+    result_data = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+
+    # Total items and processed count
+    total_items = models.PositiveIntegerField(default=0)
+    processed_items = models.PositiveIntegerField(default=0)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_action_type_display()} job by {self.user.username} ({self.get_status_display()})"
+
+    @property
+    def progress_percentage(self):
+        """Calculate job progress percentage"""
+        if self.total_items == 0:
+            return 0
+        return int((self.processed_items / self.total_items) * 100)
+
+    @property
+    def duration_seconds(self):
+        """Calculate job duration in seconds"""
+        if self.status == 'completed' and self.completed_at:
+            return (self.completed_at - self.created_at).total_seconds()
+        elif self.status in ['pending', 'processing']:
+            return (timezone.now() - self.created_at).total_seconds()
+        return None
+
+
+class LinkHealth(models.Model):
+    """Stores link health status for bookmarks"""
+    STATUS_CHOICES = [
+        ('ok', 'OK'),
+        ('redirected', 'Redirected'),
+        ('broken', 'Broken'),
+        ('pending', 'Pending Check'),
+        ('archived', 'Web Archive Available'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bookmark = models.OneToOneField(Bookmark, on_delete=models.CASCADE, related_name='health')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    last_checked = models.DateTimeField(null=True, blank=True)
+    next_check = models.DateTimeField(null=True, blank=True)
+    final_url = models.URLField(max_length=2000, blank=True, null=True)
+    status_code = models.PositiveSmallIntegerField(null=True, blank=True)
+    response_time = models.PositiveIntegerField(null=True, blank=True)  # in milliseconds
+    error_message = models.TextField(blank=True)
+    archive_url = models.URLField(max_length=2000, blank=True, null=True)
+    check_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-last_checked']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['last_checked']),
+            models.Index(fields=['next_check']),
+        ]
+
+    def __str__(self):
+        return f"{self.bookmark.title} - {self.get_status_display()}"
+
+    @property
+    def is_healthy(self):
+        return self.status == 'ok'
+
+    @property
+    def is_redirected(self):
+        return self.status == 'redirected'
+
+    @property
+    def is_broken(self):
+        return self.status == 'broken'
+
+    @property
+    def has_archive(self):
+        return self.archive_url is not None and self.archive_url != ""
+
+    def update_next_check_time(self):
+        """Calculate next check time based on status and check history"""
+        now = timezone.now()
+
+        if self.status == 'ok':
+            # Healthy links - check less frequently
+            self.next_check = now + timedelta(days=30)
+        elif self.status == 'redirected':
+            # Redirected links - check weekly
+            self.next_check = now + timedelta(days=7)
+        elif self.status == 'broken':
+            # Broken links - check every few days
+            self.next_check = now + timedelta(days=3)
+        else:
+            # Pending or other - check soon
+            self.next_check = now + timedelta(days=1)
+
+        return self.next_check

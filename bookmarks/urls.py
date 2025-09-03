@@ -11,6 +11,8 @@ router.register(r'saved-views', views.SavedViewViewSet, basename='saved-view')
 router.register(r'board-layouts', views.BoardLayoutViewSet, basename='board-layout')
 router.register(r'highlights', views.BookmarkHighlightViewSet, basename='highlight')
 router.register(r'history', views.BookmarkHistoryViewSet, basename='history')
+router.register(r'link-health', views.LinkHealthViewSet, basename='link-health')
+router.register(r'bulk-actions', views.BulkActionJobViewSet, basename='bulk-actions')
 
 urlpatterns = [
     # Authentication endpoints
@@ -44,4 +46,14 @@ urlpatterns = [
 
     # History endpoint
     path('bookmarks/<uuid:bookmark_id>/history/', views.BookmarkHistoryViewSet.as_view({'get': 'list', 'post': 'create'}), name='bookmark-history'),
+
+    # Link health endpoints
+    path('bookmarks/<uuid:bookmark_id>/check-health/', views.LinkHealthViewSet.as_view({'post': 'check_health'}), name='bookmark-check-health'),
+    path('link-health/stats/', views.LinkHealthViewSet.as_view({'get': 'stats'}), name='link-health-stats'),
+    path('link-health/check-links/', views.LinkHealthViewSet.as_view({'post': 'check_links'}), name='check-links'),
+    path('link-health/broken-links-view/', views.LinkHealthViewSet.as_view({'get': 'broken_links_view'}), name='broken-links-view'),
+
+    # Bulk actions endpoints
+    path('bulk-actions/cancel/<uuid:pk>/', views.BulkActionJobViewSet.as_view({'post': 'cancel'}), name='cancel-bulk-action'),
+    path('bulk-actions/retry/<uuid:pk>/', views.BulkActionJobViewSet.as_view({'post': 'retry'}), name='retry-bulk-action'),
 ]

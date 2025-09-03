@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout, BookmarkHighlight, BookmarkNote, BookmarkHistoryEntry
+from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout, BookmarkHighlight, BookmarkNote, BookmarkHistoryEntry, LinkHealth, BulkActionJob
+
+
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -56,6 +58,7 @@ class BookmarkSerializer(serializers.ModelSerializer):
     collection_name = serializers.CharField(source='collection.name', read_only=True)
     tag_names = serializers.ReadOnlyField()
     search_rank = serializers.IntegerField(read_only=True, required=False)
+    health_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Bookmark
@@ -63,7 +66,7 @@ class BookmarkSerializer(serializers.ModelSerializer):
             'id', 'title', 'url', 'description', 'notes', 'content', 'favicon_url', 'screenshot_url',
             'is_favorite', 'is_archived', 'is_public', 'is_read', 'created_at', 'updated_at',
             'visited_at', 'tags', 'tag_ids', 'collection', 'collection_name',
-            'tag_names', 'domain', 'search_rank'
+            'tag_names', 'domain', 'search_rank', 'health_status'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'domain', 'search_rank']
 
@@ -89,6 +92,26 @@ class BookmarkSerializer(serializers.ModelSerializer):
             bookmark.tags.set(tags)
 
         return bookmark
+
+    def get_health_status(self, obj):
+        try:
+            health = obj.health
+            return {
+                'status': health.status,
+                'last_checked': health.last_checked,
+                'final_url': health.final_url,
+                'has_archive': health.has_archive,
+                'archive_url': health.archive_url,
+                'id': str(health.id)
+            }
+        except (LinkHealth.DoesNotExist, AttributeError):
+            # Always return a timestamp even if no health record exists
+            from django.utils import timezone
+            return {
+                'status': 'pending',
+                'last_checked': timezone.now(),
+                'id': str(obj.id)
+            }
 
 
 class BookmarkCreateSerializer(serializers.ModelSerializer):
@@ -225,3 +248,52 @@ class BookmarkHistoryEntrySerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
+
+class LinkHealthSerializer(serializers.ModelSerializer):
+    """Serializer for link health status"""
+    bookmark_title = serializers.CharField(source='bookmark.title', read_only=True)
+    bookmark_url = serializers.CharField(source='bookmark.url', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = LinkHealth
+        fields = [
+            'id', 'bookmark', 'bookmark_title', 'bookmark_url', 'status', 'status_display',
+            'last_checked', 'final_url', 'status_code', 'response_time', 'error_message',
+            'archive_url', 'check_count', 'next_check'
+        ]
+        read_only_fields = ['id', 'last_checked', 'status_code', 'response_time', 'check_count']
+
+    def create(self, validated_data):
+        return LinkHealth.objects.create(**validated_data)
+
+
+class LinkHealthStatsSerializer(serializers.Serializer):
+    """Serializer for link health statistics summary"""
+    ok = serializers.IntegerField()
+    redirected = serializers.IntegerField()
+    broken = serializers.IntegerField()
+    archived = serializers.IntegerField()
+    pending = serializers.IntegerField()
+    unchecked = serializers.IntegerField()
+    total_checked = serializers.IntegerField()
+    total = serializers.IntegerField()
+
+
+class BulkActionJobSerializer(serializers.ModelSerializer):
+    """Serializer for bulk action jobs"""
+    action_type_display = serializers.CharField(source='get_action_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    progress = serializers.IntegerField(source='progress_percentage', read_only=True)
+    duration = serializers.FloatField(source='duration_seconds', read_only=True)
+
+    class Meta:
+        model = BulkActionJob
+        fields = [
+            'id', 'action_type', 'action_type_display', 'status', 'status_display',
+            'bookmark_ids', 'parameters', 'result_data', 'error_message',
+            'total_items', 'processed_items', 'progress', 'duration',
+            'created_at', 'updated_at', 'completed_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'completed_at', 'status']

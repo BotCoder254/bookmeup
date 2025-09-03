@@ -30,6 +30,17 @@ class ApiClient {
     this.getBookmarkSnapshot = this.getBookmarkSnapshot.bind(this);
     this.generateBookmarkSnapshot = this.generateBookmarkSnapshot.bind(this);
     this.getRelatedBookmarks = this.getRelatedBookmarks.bind(this);
+    this.getLinkHealth = this.getLinkHealth.bind(this);
+    this.getLinkHealthStats = this.getLinkHealthStats.bind(this);
+    this.checkLinks = this.checkLinks.bind(this);
+    this.applyRedirect = this.applyRedirect.bind(this);
+    this.updateBookmarkUrl = this.updateBookmarkUrl.bind(this);
+    this.getBrokenLinksView = this.getBrokenLinksView.bind(this);
+    this.createBulkAction = this.createBulkAction.bind(this);
+    this.cancelBulkAction = this.cancelBulkAction.bind(this);
+    this.retryBulkAction = this.retryBulkAction.bind(this);
+    this.getBulkActions = this.getBulkActions.bind(this);
+    this.getBulkAction = this.getBulkAction.bind(this);
     this.getTags = this.getTags.bind(this);
     this.createTag = this.createTag.bind(this);
     this.updateTag = this.updateTag.bind(this);
@@ -535,6 +546,107 @@ class ApiClient {
       console.error("Error duplicating bookmark:", error);
       throw error;
     }
+  }
+
+  // Link Health methods
+  async getLinkHealth(params = {}) {
+    const searchParams = new URLSearchParams(params);
+    return this.request(`/link-health/?${searchParams}`);
+  }
+
+  async getLinkHealthStats() {
+    try {
+      return this.request("/link-health/stats/");
+    } catch (error) {
+      console.error("Error fetching link health stats:", error);
+      // Return default stats if endpoint fails
+      return {
+        ok: 0,
+        redirected: 0,
+        broken: 0,
+        archived: 0,
+        pending: 0,
+        unchecked: 0,
+        total: 0,
+      };
+    }
+  }
+
+  async checkLinks(limit = 10, bookmark_ids = null) {
+    const body = { limit };
+    if (bookmark_ids) {
+      body.bookmark_ids = bookmark_ids;
+    }
+
+    return this.request("/link-health/check-links/", {
+      method: "POST",
+      body,
+    });
+  }
+
+  async applyRedirect(healthId) {
+    if (!healthId) {
+      throw new Error("Health record ID is required");
+    }
+    return this.request(`/link-health/${healthId}/apply-redirect/`, {
+      method: "POST",
+    });
+  }
+
+  async updateBookmarkUrl(healthId, newUrl) {
+    if (!healthId) {
+      throw new Error("Health record ID is required");
+    }
+    return this.request(`/link-health/${healthId}/update-url/`, {
+      method: "POST",
+      body: { url: newUrl },
+    });
+  }
+
+  async getBrokenLinksView() {
+    return this.request("/link-health/broken-links-view/");
+  }
+
+  // Bulk Action methods
+  async createBulkAction(actionType, bookmarkIds, parameters = {}) {
+    return this.request("/bulk-actions/", {
+      method: "POST",
+      body: {
+        action_type: actionType,
+        bookmark_ids: bookmarkIds,
+        parameters: parameters,
+      },
+    });
+  }
+
+  async cancelBulkAction(jobId) {
+    if (!jobId) {
+      throw new Error("Job ID is required");
+    }
+    return this.request(`/bulk-actions/cancel/${jobId}/`, {
+      method: "POST",
+    });
+  }
+
+  async retryBulkAction(jobId) {
+    if (!jobId) {
+      throw new Error("Job ID is required");
+    }
+    return this.request(`/bulk-actions/retry/${jobId}/`, {
+      method: "POST",
+    });
+  }
+
+  async getBulkActions(params = {}) {
+    const searchParams = new URLSearchParams(params);
+    return this.request(`/bulk-actions/?${searchParams}`);
+  }
+
+  async getBulkAction(jobId) {
+    if (!jobId) {
+      throw new Error("Job ID is required");
+    }
+    return this.request(`/bulk-actions/${jobId}/`);
   }
 
   // Board Layout methods
