@@ -25,6 +25,7 @@ from .serializers import (
 )
 from .utils import enrich_url
 from .search import BookmarkSearchEngine, get_search_syntax_help
+from .duplicates import DuplicateManager
 import time
 
 logger = logging.getLogger(__name__)
@@ -399,6 +400,12 @@ class BookmarkViewSet(viewsets.ModelViewSet):
             elif read_state.lower() == 'unread':
                 queryset = queryset.filter(visited_at__isnull=True)
 
+        # Filter by duplicate IDs if they exist in the filter
+        # This is used by the Duplicates smart view
+        duplicate_ids = self.request.query_params.getlist('duplicate_ids')
+        if duplicate_ids:
+            queryset = queryset.filter(id__in=duplicate_ids)
+
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) |
@@ -644,6 +651,147 @@ class BookmarkViewSet(viewsets.ModelViewSet):
 
         serializer = SnapshotSerializer(snapshot)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def duplicates(self, request):
+        """Detect and return duplicate bookmarks for the user"""
+        duplicate_manager = DuplicateManager()
+        duplicate_groups = duplicate_manager.detect_duplicates(request.user.id)
+
+        # Format the response
+        formatted_groups = []
+        for group in duplicate_groups:
+            # Convert bookmarks to serialized data
+            serializer = self.get_serializer(group['bookmarks'], many=True)
+
+            group_data = {
+                'bookmarks': serializer.data
+            }
+
+            # Add any additional group metadata
+            if 'normalized_url' in group:
+                group_data['normalized_url'] = group['normalized_url']
+                group_data['type'] = 'url_duplicate'
+            elif 'title_similarity' in group:
+                group_data['type'] = 'title_similar'
+
+            formatted_groups.append(group_data)
+
+        return Response({
+            'duplicate_groups': formatted_groups,
+            'count': len(formatted_groups)
+        })
+
+    @action(detail=False, methods=['post'])
+    def merge(self, request):
+        """Merge duplicate bookmarks"""
+        primary_id = request.data.get('primary_id')
+        duplicate_ids = request.data.get('duplicate_ids', [])
+
+        # Log the raw incoming data
+        logger.info(f"Received merge request with raw data: primary_id={primary_id}, duplicate_ids={duplicate_ids} (type: {type(duplicate_ids)})")
+
+        # Handle string-formatted duplicate_ids (from form data or JSON string)
+        if isinstance(duplicate_ids, str):
+            try:
+                import json
+                duplicate_ids = json.loads(duplicate_ids)
+                logger.info(f"Parsed duplicate_ids from JSON string: {duplicate_ids}")
+            except:
+                duplicate_ids = [duplicate_ids]
+                logger.info(f"Could not parse JSON, treating as single value: {duplicate_ids}")
+
+        # Log the incoming request
+        logger.info(f"Merge bookmarks request: primary_id={primary_id}, duplicate_ids={duplicate_ids}")
+
+        if not primary_id or not duplicate_ids:
+            logger.warning(f"Missing required parameters: primary_id={primary_id}, duplicate_ids={duplicate_ids}")
+            return Response(
+                {'error': 'Both primary_id and duplicate_ids are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Remove primary bookmark from duplicates list if present
+        if not isinstance(duplicate_ids, list):
+            duplicate_ids = [duplicate_ids]
+
+        # Convert all IDs to strings for consistent comparison
+        primary_id_str = str(primary_id)
+        duplicate_ids = [str(d_id) for d_id in duplicate_ids]
+
+        original_count = len(duplicate_ids)
+        duplicate_ids = [d_id for d_id in duplicate_ids if d_id != primary_id_str]
+
+        if len(duplicate_ids) < original_count:
+            logger.info(f"Removed primary bookmark {primary_id} from duplicates list")
+
+        if not duplicate_ids:
+            logger.warning("No valid duplicates to merge after filtering")
+            return Response(
+                {'error': 'Cannot merge a bookmark with itself. Please select different bookmarks to merge.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Log what we're actually querying
+            logger.info(f"Querying for primary ID: {primary_id} (type: {type(primary_id)})")
+            logger.info(f"Querying for duplicates: {duplicate_ids} (types: {[type(d_id) for d_id in duplicate_ids]})")
+
+            # Verify all bookmarks belong to the requesting user
+            primary_bookmark = Bookmark.objects.get(id=primary_id, user=request.user)
+            duplicates = Bookmark.objects.filter(id__in=duplicate_ids, user=request.user)
+
+            found_ids = set(str(id) for id in duplicates.values_list('id', flat=True))
+            missing_ids = set(duplicate_ids) - found_ids
+
+            if missing_ids:
+                logger.warning(f"Duplicate bookmarks not found or not owned by user: {missing_ids}")
+                return Response(
+                    {'error': 'One or more duplicate bookmarks not found or not owned by you',
+                     'missing_ids': list(missing_ids)},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Perform the merge
+            try:
+                logger.info(f"About to merge primary {primary_id} with duplicates {duplicate_ids}")
+                duplicate_manager = DuplicateManager()
+                updated_bookmark = duplicate_manager.merge_bookmarks(primary_id, duplicate_ids)
+
+                # Return the updated primary bookmark
+                serializer = BookmarkSerializer(updated_bookmark, context={'request': request})
+                logger.info(f"Successfully merged {len(duplicate_ids)} bookmarks into {primary_id}")
+                return Response({
+                    'message': f'Successfully merged {len(duplicate_ids)} bookmarks',
+                    'bookmark': serializer.data
+                })
+            except ValueError as e:
+                if "Cannot merge a bookmark with itself" in str(e):
+                    return Response(
+                        {'error': 'Cannot merge a bookmark with itself'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                raise  # Re-raise for other ValueError cases
+
+        except Bookmark.DoesNotExist:
+            logger.error(f"Primary bookmark not found: {primary_id}")
+            return Response(
+                {'error': 'Primary bookmark not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            # Handle validation errors from the merge_bookmarks function
+            logger.error(f"Validation error during merge: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error merging bookmarks: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Error merging bookmarks: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=['post'])
     def snapshot_generate(self, request, pk=None):
@@ -892,6 +1040,40 @@ class CollectionViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
+    @action(detail=False, methods=['get'])
+    def duplicates_view(self, request):
+        """Get or create the Duplicates smart view"""
+        try:
+            # Check if the view already exists
+            duplicates_view = SavedView.objects.get(
+                user=request.user,
+                name="Duplicates"
+            )
+        except SavedView.DoesNotExist:
+            # Create the view if it doesn't exist
+            duplicate_manager = DuplicateManager()
+            duplicate_groups = duplicate_manager.detect_duplicates(request.user.id)
+
+            # Generate a list of bookmark IDs that are duplicates
+            duplicate_ids = []
+            for group in duplicate_groups:
+                for bookmark in group['bookmarks']:
+                    duplicate_ids.append(str(bookmark.id))
+
+            # Create the view
+            duplicates_view = SavedView.objects.create(
+                user=request.user,
+                name="Duplicates",
+                description=f"Bookmarks with duplicate URLs or similar titles ({len(duplicate_ids)} found)",
+                filters={'duplicate_ids': duplicate_ids},
+                icon="copy",
+                is_system=True,
+                order=1  # High priority in the sidebar
+            )
+
+        serializer = self.get_serializer(duplicates_view)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'])
     def reorder(self, request):
         """Batch reorder collections"""
@@ -1006,6 +1188,134 @@ class SavedViewViewSet(viewsets.ModelViewSet):
         return Response({'message': 'Views reordered successfully'})
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def duplicate_bookmark(request, pk):
+    """Duplicate a bookmark and return the new copy"""
+    try:
+        # Get the original bookmark
+        original_bookmark = Bookmark.objects.get(id=pk, user=request.user)
+
+        # Extract base URL and add a timestamp to create a unique URL
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        import time
+
+        # Parse the URL
+        parsed_url = urlparse(original_bookmark.url)
+
+        # Get existing query parameters
+        query_params = parse_qs(parsed_url.query)
+
+        # Add a unique timestamp parameter to ensure uniqueness
+        timestamp = int(time.time() * 1000)
+        query_params['_dup'] = [str(timestamp)]
+
+        # Also add original bookmark ID for reference
+        query_params['_dup_from'] = [str(original_bookmark.id)]
+
+        # Rebuild the URL with updated query parameters
+        unique_url = urlunparse(
+            (
+                parsed_url.scheme,
+                parsed_url.netloc,
+                parsed_url.path,
+                parsed_url.params,
+                urlencode(query_params, doseq=True),
+                parsed_url.fragment
+            )
+        )
+
+        # Create a new bookmark with the same properties but unique URL
+        new_bookmark = Bookmark.objects.create(
+            user=request.user,
+            title=f"{original_bookmark.title} (Copy)",
+            url=unique_url,
+            description=original_bookmark.description,
+            notes=original_bookmark.notes,
+            content=original_bookmark.content,
+            favicon_url=original_bookmark.favicon_url,
+            screenshot_url=original_bookmark.screenshot_url,
+            domain=original_bookmark.domain,
+            collection=original_bookmark.collection
+        )
+
+        # Copy tags
+        new_bookmark.tags.set(original_bookmark.tags.all())
+
+        # Log activity
+        BookmarkActivity.objects.create(
+            bookmark=new_bookmark,
+            user=request.user,
+            activity_type='created',
+            metadata={
+                'duplicated_from': str(original_bookmark.id),
+                'original_url': original_bookmark.url,
+                'original_title': original_bookmark.title
+            }
+        )
+
+        # Force a refresh of the duplicate detection
+        duplicate_manager = DuplicateManager()
+        duplicate_groups = duplicate_manager.detect_duplicates(request.user.id)
+
+        # Update any existing Duplicates saved view
+        try:
+            duplicate_ids = []
+            for group in duplicate_groups:
+                for duplicate_bookmark in group['bookmarks']:
+                    duplicate_ids.append(str(duplicate_bookmark.id))
+
+            duplicates_view = SavedView.objects.get(
+                user=request.user,
+                name="Duplicates"
+            )
+
+            # Update the view with fresh duplicate IDs
+            duplicates_view.filters = {'duplicate_ids': duplicate_ids}
+            duplicates_view.description = f"Bookmarks with duplicate URLs or similar titles ({len(duplicate_ids)} found)"
+            duplicates_view.save()
+        except SavedView.DoesNotExist:
+            # Create the view if it doesn't exist
+            if duplicate_ids:
+                SavedView.objects.create(
+                    user=request.user,
+                    name="Duplicates",
+                    description=f"Bookmarks with duplicate URLs or similar titles ({len(duplicate_ids)} found)",
+                    filters={'duplicate_ids': duplicate_ids},
+                    icon="copy",
+                    is_system=True,
+                    order=1
+                )
+
+        return Response(
+            {
+                'bookmark': BookmarkSerializer(new_bookmark, context={'request': request}).data,
+                'original_bookmark_id': str(original_bookmark.id),
+                'message': f"Successfully duplicated '{original_bookmark.title}'"
+            },
+            status=status.HTTP_201_CREATED
+        )
+    except Bookmark.DoesNotExist:
+        return Response(
+            {'error': 'Bookmark not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        # Handle unique constraint error specifically
+        if 'UNIQUE constraint failed' in str(e):
+            logger.error(f"Unique constraint error when duplicating bookmark: {str(e)}")
+            return Response(
+                {'error': 'You already have a bookmark with this URL. Cannot create duplicate.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        else:
+            logger.error(f"Error duplicating bookmark: {str(e)}")
+            return Response(
+                {'error': f'Failed to duplicate bookmark: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def bookmark_stats(request):
@@ -1018,6 +1328,16 @@ def bookmark_stats(request):
     archived_bookmarks = Bookmark.objects.filter(user=user, is_archived=True).count()
     total_collections = Collection.objects.filter(user=user).count()
     total_tags = Tag.objects.filter(user=user).count()
+
+    # Count duplicates
+    from urllib.parse import urlparse, parse_qs
+    duplicate_count = 0
+    bookmarks = Bookmark.objects.filter(user=user)
+    for bookmark in bookmarks:
+        parsed_url = urlparse(bookmark.url)
+        query_params = parse_qs(parsed_url.query)
+        if '_dup' in query_params:
+            duplicate_count += 1
 
     # Recent activity (last 7 days)
     week_ago = timezone.now() - timedelta(days=7)
@@ -1035,6 +1355,7 @@ def bookmark_stats(request):
         'total_bookmarks': total_bookmarks,
         'favorite_bookmarks': favorite_bookmarks,
         'archived_bookmarks': archived_bookmarks,
+        'duplicate_bookmarks': duplicate_count,
         'total_collections': total_collections,
         'total_tags': total_tags,
         'recent_activity_count': recent_activity_count,

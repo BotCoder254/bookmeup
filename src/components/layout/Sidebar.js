@@ -12,6 +12,7 @@ import {
   FiSettings,
   FiMenu,
   FiX,
+  FiCopy,
 } from "react-icons/fi";
 import { useTags, useCollections } from "../../hooks";
 import TagManager from "../tags/TagManager";
@@ -49,6 +50,12 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
     { id: "all", label: "All Bookmarks", icon: FiBookmark, path: "/dashboard" },
     { id: "favorites", label: "Favorites", icon: FiStar, path: "/favorites" },
     { id: "archived", label: "Archived", icon: FiArchive, path: "/archived" },
+    {
+      id: "duplicates",
+      label: "Duplicates",
+      icon: FiCopy,
+      path: "/duplicates",
+    },
   ];
 
   const handleTagSelect = (tag) => {

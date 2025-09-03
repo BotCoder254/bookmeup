@@ -11,21 +11,24 @@ import {
   FiFolder,
   FiClock,
   FiEye,
+  FiCopy as FiDuplicate,
   FiMoreHorizontal,
   FiBookOpen,
   FiInfo,
   FiFileText,
   FiChevronLeft,
-  FiLink,
   FiArrowLeft,
+  FiLink,
 } from "react-icons/fi";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/Tabs";
+import { useToast } from "../../../contexts";
 import {
+  useVisitBookmark,
   useToggleFavorite,
   useToggleArchive,
-  useVisitBookmark,
   useDeleteBookmark,
   useUpdateBookmark,
+  useDuplicateBookmark,
 } from "../../../hooks";
 import { bookmarkKeys } from "../../../hooks/useBookmarks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -44,13 +47,19 @@ import MetadataPanel from "./MetadataPanel";
 const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
   const [activeTab, setActiveTab] = useState("summary");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isDuplicate = bookmark.url.includes("_dup=");
+  const originalId = isDuplicate
+    ? new URLSearchParams(new URL(bookmark.url).search).get("_dup_from")
+    : null;
 
   const toggleFavorite = useToggleFavorite();
   const toggleArchive = useToggleArchive();
   const visitBookmark = useVisitBookmark();
   const deleteBookmark = useDeleteBookmark();
   const updateBookmark = useUpdateBookmark();
+  const duplicateBookmark = useDuplicateBookmark();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   // Custom function to mark bookmark as read without showing a toast
   const markAsReadSilently = React.useCallback(
@@ -104,22 +113,11 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
     navigator.clipboard
       .writeText(bookmark.url)
       .then(() => {
-        // Create and show a temporary toast notification
-        const toast = document.createElement("div");
-        toast.className =
-          "fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50";
-        toast.textContent = "URL copied to clipboard";
-        document.body.appendChild(toast);
-
-        // Remove the toast after 2 seconds
-        setTimeout(() => {
-          toast.classList.add(
-            "opacity-0",
-            "transition-opacity",
-            "duration-500",
-          );
-          setTimeout(() => document.body.removeChild(toast), 500);
-        }, 2000);
+        showToast({
+          type: "success",
+          title: "Success",
+          message: "URL copied to clipboard",
+        });
       })
       .catch((err) => {
         console.error("Failed to copy: ", err);
@@ -142,21 +140,35 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
           handleCopyLink();
         });
     } else {
-      // Show a message and fall back to copy
-      const toast = document.createElement("div");
-      toast.className =
-        "fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-md shadow-lg z-50";
-      toast.textContent = "Sharing not supported - URL copied to clipboard";
-      document.body.appendChild(toast);
-
-      // Remove the toast after 2 seconds
-      setTimeout(() => {
-        toast.classList.add("opacity-0", "transition-opacity", "duration-500");
-        setTimeout(() => document.body.removeChild(toast), 500);
-      }, 2000);
+      showToast({
+        type: "info",
+        title: "Info",
+        message: "Sharing not supported - URL copied to clipboard",
+      });
 
       handleCopyLink();
     }
+  };
+
+  const handleDuplicateBookmark = () => {
+    duplicateBookmark.mutate(bookmark.id, {
+      onSuccess: () => {
+        showToast({
+          type: "success",
+          title: "Success",
+          message: "Bookmark duplicated successfully",
+        });
+        setIsMenuOpen(false);
+      },
+      onError: (error) => {
+        console.error("Failed to duplicate bookmark:", error);
+        showToast({
+          type: "error",
+          title: "Error",
+          message: "Failed to duplicate bookmark",
+        });
+      },
+    });
   };
 
   const domain = extractDomain(bookmark.url);
@@ -179,12 +191,26 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
       {/* Mobile Header */}
       {isMobile && (
         <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={onClose}
-            className="p-1 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            <FiArrowLeft className="w-5 h-5" />
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 mr-2"
+            >
+              <FiArrowLeft className="w-5 h-5" />
+            </button>
+            {isDuplicate && (
+              <span
+                className="ml-3 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium flex items-center"
+                title="This bookmark is a duplicate"
+              >
+                <FiCopy className="w-3 h-3 mr-1" />
+                Duplicate{" "}
+                {originalId
+                  ? `(from ID: ${originalId.substring(0, 8)}...)`
+                  : ""}
+              </span>
+            )}
+          </div>
           <div className="flex space-x-2">
             <button
               onClick={handleFavoriteToggle}
@@ -252,6 +278,13 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
                       <FiEdit2 className="mr-2 w-4 h-4" />
                       Edit bookmark
                     </button>
+                    <button
+                      onClick={handleDuplicateBookmark}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+                    >
+                      <FiDuplicate className="mr-2 w-4 h-4" />
+                      Duplicate bookmark
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -265,13 +298,27 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
         {/* Desktop header with actions */}
         {!isMobile && (
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <button
-              onClick={onClose}
-              className="p-1 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center"
-            >
-              <FiChevronLeft className="w-5 h-5 mr-1" />
-              <span className="text-sm font-medium">Back to list</span>
-            </button>
+            <div className="flex items-center">
+              <button
+                onClick={onClose}
+                className="p-1 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center"
+              >
+                <FiChevronLeft className="w-5 h-5 mr-1" />
+                <span className="text-sm font-medium">Back to list</span>
+              </button>
+              {isDuplicate && (
+                <span
+                  className="ml-3 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium flex items-center"
+                  title="This bookmark is a duplicate"
+                >
+                  <FiCopy className="w-3 h-3 mr-1" />
+                  Duplicate{" "}
+                  {originalId
+                    ? `(from ID: ${originalId.substring(0, 8)}...)`
+                    : ""}
+                </span>
+              )}
+            </div>
             <div className="flex items-center space-x-1">
               <button
                 onClick={handleFavoriteToggle}

@@ -9,13 +9,16 @@ import {
   FiTrash2,
   FiFolder,
   FiClock,
+  FiCopy,
 } from "react-icons/fi";
 import {
   useToggleFavorite,
   useToggleArchive,
   useVisitBookmark,
   useDeleteBookmark,
+  useDuplicateBookmark,
 } from "../../hooks";
+import { useToast } from "../../contexts";
 import {
   formatDate,
   extractDomain,
@@ -28,11 +31,17 @@ const BookmarkCard = ({ bookmark }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const isDuplicate = bookmark.url.includes("_dup=");
+  const originalId = isDuplicate
+    ? new URLSearchParams(new URL(bookmark.url).search).get("_dup_from")
+    : null;
 
   const toggleFavorite = useToggleFavorite();
   const toggleArchive = useToggleArchive();
   const visitBookmark = useVisitBookmark();
   const deleteBookmark = useDeleteBookmark();
+  const duplicateBookmark = useDuplicateBookmark();
+  const { showToast } = useToast();
 
   const handleFavoriteToggle = (e) => {
     e.preventDefault();
@@ -52,6 +61,38 @@ const BookmarkCard = ({ bookmark }) => {
     if (window.confirm("Are you sure you want to delete this bookmark?")) {
       deleteBookmark.mutate(bookmark.id);
     }
+  };
+
+  const handleDuplicate = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowMenu(false);
+
+    showToast({
+      type: "info",
+      title: "Processing",
+      message: "Duplicating bookmark...",
+    });
+
+    duplicateBookmark.mutate(bookmark.id, {
+      onSuccess: (data) => {
+        showToast({
+          type: "success",
+          title: "Success",
+          message: "Bookmark duplicated successfully",
+        });
+      },
+      onError: (error) => {
+        console.error("Duplication error:", error);
+        showToast({
+          type: "error",
+          title: "Error",
+          message:
+            error?.message ||
+            "Failed to duplicate bookmark. The URL might already exist.",
+        });
+      },
+    });
   };
 
   const handleOpenUrl = (e) => {
@@ -156,6 +197,14 @@ const BookmarkCard = ({ bookmark }) => {
                     </button>
 
                     <button
+                      onClick={handleDuplicate}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                    >
+                      <FiCopy className="w-4 h-4" />
+                      <span>Duplicate</span>
+                    </button>
+
+                    <button
                       onClick={handleArchiveToggle}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                     >
@@ -243,6 +292,22 @@ const BookmarkCard = ({ bookmark }) => {
         {bookmark.is_archived && (
           <div className="absolute top-2 left-2">
             <FiArchive className="w-4 h-4 text-gray-400" />
+          </div>
+        )}
+
+        {/* Duplicate indicator */}
+        {isDuplicate && (
+          <div
+            className="absolute top-2 right-2 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs font-medium"
+            title="This is a duplicate bookmark"
+          >
+            <div className="flex items-center">
+              <FiCopy className="w-3 h-3 mr-1" />
+              <span>
+                Duplicate
+                {originalId ? ` (ID: ${originalId.substring(0, 8)}...)` : ""}
+              </span>
+            </div>
           </div>
         )}
       </motion.div>

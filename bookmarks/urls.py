@@ -16,13 +16,19 @@ urlpatterns = [
     path('auth/logout/', views.logout_view, name='logout'),
     path('auth/me/', views.me_view, name='me'),
     path('auth/auto-login/', views.auto_login_view, name='auto-login'),
-    
+
     # Quick add bookmark
     path('bookmarks/quick-add/', views.quick_add_bookmark, name='quick-add-bookmark'),
-    
+
+    # Duplicate bookmark
+    path('bookmarks/<uuid:pk>/duplicate/', views.duplicate_bookmark, name='duplicate-bookmark'),
+
     # Statistics
     path('stats/', views.bookmark_stats, name='bookmark-stats'),
-    
+
+    # Merge bookmarks
+    path('bookmarks/merge/', views.BookmarkViewSet.as_view({'post': 'merge'}), name='merge-bookmarks'),
+
     # API endpoints
     path('', include(router.urls)),
 ]

@@ -1,26 +1,28 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useLocation } from 'react-router-dom';
-import Sidebar from './Sidebar';
-import TopBar from './TopBar';
-import FloatingActionButton from '../ui/FloatingActionButton';
-import QuickAddModal from '../modals/QuickAddModal';
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { useLocation } from "react-router-dom";
+import Sidebar from "./Sidebar";
+import TopBar from "./TopBar";
+import FloatingActionButton from "../ui/FloatingActionButton";
+import QuickAddModal from "../modals/QuickAddModal";
 
 const Layout = ({ children }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [viewMode, setViewMode] = useState('grid');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState("grid");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
   const location = useLocation();
 
   // Determine active view based on current route
   const getActiveView = () => {
-    if (location.pathname === '/favorites') {
-      return { type: 'favorites' };
-    } else if (location.pathname === '/archived') {
-      return { type: 'archived' };
+    if (location.pathname === "/favorites") {
+      return { type: "favorites" };
+    } else if (location.pathname === "/archived") {
+      return { type: "archived" };
+    } else if (location.pathname === "/duplicates") {
+      return { type: "duplicates" };
     } else {
-      return { type: 'all' };
+      return { type: "all" };
     }
   };
 
@@ -68,12 +70,12 @@ const Layout = ({ children }) => {
             activeView,
           })}
         </motion.main>
-        
+
         {/* Floating Action Button */}
         <FloatingActionButton onClick={handleAddBookmark} />
-        
+
         {/* Quick Add Modal */}
-        <QuickAddModal 
+        <QuickAddModal
           isOpen={showQuickAddModal}
           onClose={() => setShowQuickAddModal(false)}
         />

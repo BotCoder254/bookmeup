@@ -33,11 +33,11 @@ class CollectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Collection
         fields = [
-            'id', 'name', 'description', 'slug', 'is_public', 'cover_image', 
+            'id', 'name', 'description', 'slug', 'is_public', 'cover_image',
             'cover_image_url', 'order', 'created_at', 'updated_at', 'bookmark_count'
         ]
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
-    
+
     def get_cover_image_url(self, obj):
         return obj.get_cover_image()
 
@@ -56,7 +56,7 @@ class BookmarkSerializer(serializers.ModelSerializer):
     collection_name = serializers.CharField(source='collection.name', read_only=True)
     tag_names = serializers.ReadOnlyField()
     search_rank = serializers.IntegerField(read_only=True, required=False)
-    
+
     class Meta:
         model = Bookmark
         fields = [
@@ -71,29 +71,29 @@ class BookmarkSerializer(serializers.ModelSerializer):
         tag_ids = validated_data.pop('tag_ids', [])
         validated_data['user'] = self.context['request'].user
         bookmark = super().create(validated_data)
-        
+
         # Set tags
         if tag_ids:
             tags = Tag.objects.filter(id__in=tag_ids, user=bookmark.user)
             bookmark.tags.set(tags)
-        
+
         return bookmark
 
     def update(self, instance, validated_data):
         tag_ids = validated_data.pop('tag_ids', None)
         bookmark = super().update(instance, validated_data)
-        
+
         # Update tags if provided
         if tag_ids is not None:
             tags = Tag.objects.filter(id__in=tag_ids, user=bookmark.user)
             bookmark.tags.set(tags)
-        
+
         return bookmark
 
 
 class BookmarkCreateSerializer(serializers.ModelSerializer):
     """Simplified serializer for quick bookmark creation"""
-    
+
     class Meta:
         model = Bookmark
         fields = ['url', 'title', 'description', 'is_favorite', 'collection']
@@ -130,15 +130,15 @@ class BookmarkStatsSerializer(serializers.Serializer):
 class SavedViewSerializer(serializers.ModelSerializer):
     """Serializer for saved search views"""
     filter_summary = serializers.ReadOnlyField(source='get_filter_summary')
-    
+
     class Meta:
         model = SavedView
         fields = [
-            'id', 'name', 'icon', 'description', 'filters', 'is_public', 'order',
+            'id', 'name', 'icon', 'description', 'filters', 'is_public', 'is_system', 'order',
             'created_at', 'updated_at', 'last_used', 'filter_summary'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-    
+
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)

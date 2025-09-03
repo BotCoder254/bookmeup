@@ -164,6 +164,7 @@ class BookmarkActivity(models.Model):
         ('unfavorited', 'Unfavorited'),
         ('archived', 'Archived'),
         ('unarchived', 'Unarchived'),
+        ('merged', 'Merged'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -197,6 +198,10 @@ class SavedView(models.Model):
         ('clock', 'Clock'),
         ('eye', 'Eye'),
         ('lightning', 'Lightning'),
+        ('copy', 'Copy'),
+        ('layers', 'Layers'),
+        ('alert-triangle', 'Warning'),
+        ('zap', 'Zap'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -204,6 +209,7 @@ class SavedView(models.Model):
     icon = models.CharField(max_length=20, choices=ICON_CHOICES, default='search')
     description = models.TextField(blank=True)
     filters = models.JSONField(default=dict)  # Stored filter configuration
+    is_system = models.BooleanField(default=False)  # If True, this is a system-generated view
     is_public = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)  # For custom ordering in sidebar
 

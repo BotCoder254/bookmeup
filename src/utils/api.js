@@ -259,10 +259,10 @@ class ApiClient {
     });
   }
 
-  async updateBookmark(id, bookmark) {
+  async updateBookmark(id, bookmarkData) {
     return this.request(`/bookmarks/${id}/`, {
       method: "PATCH",
-      body: bookmark,
+      body: bookmarkData,
     });
   }
 
@@ -273,13 +273,13 @@ class ApiClient {
   }
 
   async toggleFavorite(id) {
-    return this.request(`/bookmarks/${id}/toggle_favorite/`, {
+    return this.request(`/bookmarks/${id}/toggle-favorite/`, {
       method: "POST",
     });
   }
 
   async toggleArchive(id) {
-    return this.request(`/bookmarks/${id}/toggle_archive/`, {
+    return this.request(`/bookmarks/${id}/toggle-archive/`, {
       method: "POST",
     });
   }
@@ -305,12 +305,13 @@ class ApiClient {
   }
 
   // Bookmark Snapshot methods
+  // Snapshots
   async getBookmarkSnapshot(bookmarkId) {
     return this.request(`/bookmarks/${bookmarkId}/snapshot/`);
   }
 
   async generateBookmarkSnapshot(bookmarkId) {
-    return this.request(`/bookmarks/${bookmarkId}/snapshot/generate/`, {
+    return this.request(`/bookmarks/${bookmarkId}/snapshot-generate/`, {
       method: "POST",
     });
   }
@@ -321,21 +322,22 @@ class ApiClient {
   }
 
   // Tag methods
+  // Tags
   async getTags() {
     return this.request("/tags/");
   }
 
-  async createTag(tag) {
+  async createTag(tagData) {
     return this.request("/tags/", {
       method: "POST",
-      body: tag,
+      body: tagData,
     });
   }
 
-  async updateTag(id, tag) {
+  async updateTag(id, tagData) {
     return this.request(`/tags/${id}/`, {
       method: "PATCH",
-      body: tag,
+      body: tagData,
     });
   }
 
@@ -345,15 +347,15 @@ class ApiClient {
     });
   }
 
-  async reorderTags(tagOrders) {
+  async reorderTags(tagIds) {
     return this.request("/tags/reorder/", {
       method: "POST",
-      body: { tag_orders: tagOrders },
+      body: { tag_ids: tagIds },
     });
   }
 
   async getRecentTagSuggestions() {
-    return this.request("/tags/recent_suggestions/");
+    return this.request("/tags/recent-suggestions/");
   }
 
   // Collection methods
@@ -407,21 +409,22 @@ class ApiClient {
   }
 
   // Saved Views methods
+  // Saved Views
   async getSavedViews() {
     return this.request("/saved-views/");
   }
 
-  async createSavedView(savedView) {
+  async createSavedView(viewData) {
     return this.request("/saved-views/", {
       method: "POST",
-      body: savedView,
+      body: viewData,
     });
   }
 
-  async updateSavedView(id, savedView) {
+  async updateSavedView(id, viewData) {
     return this.request(`/saved-views/${id}/`, {
       method: "PATCH",
-      body: savedView,
+      body: viewData,
     });
   }
 
@@ -432,15 +435,15 @@ class ApiClient {
   }
 
   async useSavedView(id) {
-    return this.request(`/saved-views/${id}/use_view/`, {
+    return this.request(`/saved-views/${id}/use-view/`, {
       method: "POST",
     });
   }
 
-  async reorderSavedViews(viewOrders) {
+  async reorderSavedViews(viewIds) {
     return this.request("/saved-views/reorder/", {
       method: "POST",
-      body: { view_orders: viewOrders },
+      body: { view_orders: viewIds },
     });
   }
 
@@ -453,6 +456,41 @@ class ApiClient {
   async getActivities(params = {}) {
     const searchParams = new URLSearchParams(params);
     return this.request(`/activities/?${searchParams}`);
+  }
+
+  // Duplicates
+  async getBookmarkDuplicates() {
+    return this.request("/bookmarks/duplicates/");
+  }
+
+  async mergeBookmarks(primaryId, duplicateIds) {
+    return this.request("/bookmarks/merge/", {
+      method: "POST",
+      body: {
+        primary_id: primaryId,
+        duplicate_ids: duplicateIds,
+      },
+    });
+  }
+
+  async getDuplicatesView() {
+    return this.request("/saved-views/duplicates_view/");
+  }
+
+  async duplicateBookmark(bookmarkId) {
+    if (!bookmarkId) {
+      console.error("Attempted to duplicate a bookmark without an ID");
+      throw new Error("Bookmark ID is required");
+    }
+
+    try {
+      return await this.request(`/bookmarks/${bookmarkId}/duplicate/`, {
+        method: "POST",
+      });
+    } catch (error) {
+      console.error("Error duplicating bookmark:", error);
+      throw error;
+    }
   }
 }
 
