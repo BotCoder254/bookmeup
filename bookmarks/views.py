@@ -16,12 +16,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 
-from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView
+from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout
 from .serializers import (
     BookmarkSerializer, TagSerializer, CollectionSerializer,
     BookmarkActivitySerializer, UserSerializer, BookmarkCreateSerializer,
     BookmarkStatsSerializer, SavedViewSerializer, SearchResultSerializer,
-    SearchSuggestionSerializer
+    SearchSuggestionSerializer, BoardLayoutSerializer
 )
 from .utils import enrich_url
 from .search import BookmarkSearchEngine, get_search_syntax_help
@@ -1364,3 +1364,72 @@ def bookmark_stats(request):
 
     serializer = BookmarkStatsSerializer(stats)
     return Response(serializer.data)
+
+
+class BoardLayoutViewSet(viewsets.ModelViewSet):
+    """ViewSet for Visual Bookmark Board layouts"""
+    serializer_class = BoardLayoutSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        """Return layouts for the current user"""
+        return BoardLayout.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # Deactivate any existing active layouts for this collection
+        collection_id = serializer.validated_data.get('collection').id
+        BoardLayout.objects.filter(
+            collection_id=collection_id,
+            user=self.request.user,
+            is_active=True
+        ).update(is_active=False)
+
+        # Save the new layout
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # Only allow updating layout_data for active layouts
+        instance = self.get_object()
+        if instance.is_active:
+            serializer.save()
+        else:
+            raise serializers.ValidationError("Cannot update inactive layouts")
+
+    @action(detail=True, methods=['post'])
+    def new_version(self, request, pk=None):
+        """Save current layout as a new version"""
+        layout = self.get_object()
+        new_layout = layout.save_new_version()
+
+        if new_layout:
+            serializer = self.get_serializer(new_layout)
+            return Response(serializer.data)
+
+        return Response(
+            {'error': 'Failed to create new layout version'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    @action(detail=False, methods=['get'])
+    def collection_layout(self, request):
+        """Get active layout for a specific collection"""
+        collection_id = request.query_params.get('collection_id')
+
+        if not collection_id:
+            return Response(
+                {'error': 'collection_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            layout = BoardLayout.objects.get(
+                collection_id=collection_id,
+                user=request.user,
+                is_active=True
+            )
+            serializer = self.get_serializer(layout)
+            return Response(serializer.data)
+        except BoardLayout.DoesNotExist:
+            # Return empty success response - no layout exists yet
+            return Response({})

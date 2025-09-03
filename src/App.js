@@ -17,6 +17,7 @@ import {
   ArchivedPage,
   DuplicatesPage,
 } from "./pages";
+import AnalyticsPage from "./pages/analytics";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -97,8 +98,18 @@ function App() {
                     path="/"
                     element={<Navigate to="/dashboard" replace />}
                   />
+                  {/* Analytics Route */}
+                  <Route
+                    path="/analytics"
+                    element={
+                      <ProtectedRoute>
+                        <AnalyticsPage />
+                      </ProtectedRoute>
+                    }
+                  />
 
                   {/* Catch all route */}
+
                   <Route
                     path="*"
                     element={<Navigate to="/dashboard" replace />}

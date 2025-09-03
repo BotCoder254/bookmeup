@@ -85,6 +85,14 @@ class Collection(models.Model):
 
         return None
 
+    def get_active_layout(self):
+        """Get the active layout for this collection board"""
+        return self.layouts.filter(is_active=True).first()
+
+    def has_visual_layout(self):
+        """Check if this collection has a visual board layout"""
+        return self.layouts.filter(is_active=True).exists()
+
 
 class Bookmark(models.Model):
     """Main bookmark model"""
@@ -351,3 +359,44 @@ class BookmarkHighlight(models.Model):
 
     def __str__(self):
         return f"Highlight: {self.text[:50]}{'...' if len(self.text) > 50 else ''}"
+
+
+class BoardLayout(models.Model):
+    """Stores the visual arrangement of bookmarks in a collection board"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    collection = models.ForeignKey(Collection, on_delete=models.CASCADE, related_name='layouts')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='board_layouts')
+    layout_data = models.JSONField(default=dict)  # Stores position, size, and order information for bookmarks
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)  # To keep track of layout versions
+    version = models.PositiveIntegerField(default=1)  # Layout version number
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['collection', 'is_active']),
+            models.Index(fields=['user', 'updated_at']),
+        ]
+        unique_together = ['collection', 'user', 'is_active']
+
+    def __str__(self):
+        return f"Layout for {self.collection.name} (v{self.version})"
+
+    def save_new_version(self):
+        """Save current layout as new version"""
+        if self.is_active:
+            # Set current layout as inactive
+            self.is_active = False
+            self.save()
+
+            # Create new active version with incremented version number
+            new_layout = BoardLayout.objects.create(
+                collection=self.collection,
+                user=self.user,
+                layout_data=self.layout_data,
+                is_active=True,
+                version=self.version + 1
+            )
+            return new_layout
+        return None

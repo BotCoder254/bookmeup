@@ -19,6 +19,7 @@ import {
   FiChevronLeft,
   FiArrowLeft,
   FiLink,
+  FiPieChart,
 } from "react-icons/fi";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/Tabs";
 import { useToast } from "../../../contexts";
@@ -402,6 +403,13 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
                   <FiFileText className="w-4 h-4 mr-2" />
                   Notes
                 </TabsTrigger>
+                <TabsTrigger
+                  value="analytics"
+                  className="flex-1 py-3 px-4 text-sm font-medium"
+                >
+                  <FiPieChart className="w-4 h-4 mr-2" />
+                  Analytics
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -501,6 +509,31 @@ const BookmarkDetail = ({ bookmark, onClose, onEdit, isMobile }) => {
 
               <TabsContent value="notes" className="p-4 h-full">
                 <NotesPanel bookmarkId={bookmark.id} />
+              </TabsContent>
+
+              <TabsContent value="analytics" className="p-4 h-full">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Bookmark Analytics
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    View analytics and insights for this bookmark and your
+                    entire collection.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <a
+                      href="/analytics"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.href = "/analytics";
+                      }}
+                      className="inline-flex items-center px-3 py-2 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-medium"
+                    >
+                      <FiPieChart className="w-4 h-4 mr-2" />
+                      Open Analytics Dashboard
+                    </a>
+                  </div>
+                </div>
               </TabsContent>
             </div>
           </Tabs>

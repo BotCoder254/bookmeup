@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView
+from .models import Bookmark, Tag, Collection, BookmarkActivity, SavedView, BoardLayout
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -157,3 +157,20 @@ class SearchResultSerializer(serializers.Serializer):
     search_time = serializers.FloatField()
     filters_applied = serializers.DictField()
     text_query = serializers.CharField()
+
+
+class BoardLayoutSerializer(serializers.ModelSerializer):
+    """Serializer for Visual Bookmark Boards layouts"""
+    collection_name = serializers.CharField(source='collection.name', read_only=True)
+
+    class Meta:
+        model = BoardLayout
+        fields = [
+            'id', 'collection', 'collection_name', 'layout_data',
+            'created_at', 'updated_at', 'is_active', 'version'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'version']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)

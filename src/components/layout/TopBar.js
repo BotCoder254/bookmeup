@@ -1,18 +1,27 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  FiSearch, FiPlus, FiGrid, FiList, FiSun, FiMoon, 
-  FiUser, FiLogOut, FiChevronDown, FiColumns 
-} from 'react-icons/fi';
-import { useAuth, useTheme } from '../../contexts';
-import { debounce } from '../../utils';
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import {
+  FiSearch,
+  FiPlus,
+  FiGrid,
+  FiList,
+  FiSun,
+  FiMoon,
+  FiUser,
+  FiLogOut,
+  FiChevronDown,
+  FiColumns,
+  FiLayout,
+} from "react-icons/fi";
+import { useAuth, useTheme } from "../../contexts";
+import { debounce } from "../../utils";
 
-const TopBar = ({ 
-  viewMode, 
-  onViewModeChange, 
-  searchQuery, 
+const TopBar = ({
+  viewMode,
+  onViewModeChange,
+  searchQuery,
   onSearchChange,
-  onAddBookmark 
+  onAddBookmark,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const { user, logout } = useAuth();
@@ -59,33 +68,44 @@ const TopBar = ({
           {/* View Mode Toggle */}
           <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
             <button
-              onClick={() => onViewModeChange('grid')}
+              onClick={() => onViewModeChange("grid")}
               className={`p-2 rounded-md transition-colors ${
-                viewMode === 'grid'
-                  ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                viewMode === "grid"
+                  ? "bg-white dark:bg-gray-700 text-primary-600 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
               title="Grid View"
             >
               <FiGrid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => onViewModeChange('list')}
+              onClick={() => onViewModeChange("list")}
               className={`p-2 rounded-md transition-colors ${
-                viewMode === 'list'
-                  ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                viewMode === "list"
+                  ? "bg-white dark:bg-gray-700 text-primary-600 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
               title="List View"
             >
               <FiList className="w-4 h-4" />
             </button>
             <button
-              onClick={() => onViewModeChange('table')}
+              onClick={() => onViewModeChange("board")}
               className={`p-2 rounded-md transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                viewMode === "board"
+                  ? "bg-white dark:bg-gray-700 text-primary-600 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              }`}
+              title="Board View"
+            >
+              <FiLayout className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onViewModeChange("table")}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === "table"
+                  ? "bg-white dark:bg-gray-700 text-primary-600 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
               title="Table View"
             >
@@ -119,9 +139,11 @@ const TopBar = ({
               <span className="hidden md:inline text-gray-700 dark:text-gray-300">
                 {user?.first_name || user?.username}
               </span>
-              <FiChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${
-                isProfileOpen ? 'rotate-180' : ''
-              }`} />
+              <FiChevronDown
+                className={`w-4 h-4 text-gray-400 transition-transform ${
+                  isProfileOpen ? "rotate-180" : ""
+                }`}
+              />
             </button>
 
             {/* Dropdown Menu */}
@@ -134,16 +156,15 @@ const TopBar = ({
               >
                 <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">
-                    {user?.first_name && user?.last_name 
+                    {user?.first_name && user?.last_name
                       ? `${user.first_name} ${user.last_name}`
-                      : user?.username
-                    }
+                      : user?.username}
                   </p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {user?.email}
                   </p>
                 </div>
-                
+
                 <button
                   onClick={() => {
                     logout();

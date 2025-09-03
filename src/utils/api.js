@@ -492,6 +492,48 @@ class ApiClient {
       throw error;
     }
   }
+
+  // Board Layout methods
+  async getBoardLayouts() {
+    return this.request("/board-layouts/");
+  }
+
+  async getCollectionLayout(collectionId) {
+    if (!collectionId) {
+      console.error("Attempted to get a collection layout without an ID");
+      throw new Error("Collection ID is required");
+    }
+    const searchParams = new URLSearchParams({ collection_id: collectionId });
+    return this.request(`/board-layouts/collection_layout/?${searchParams}`);
+  }
+
+  async createBoardLayout(layoutData) {
+    return this.request("/board-layouts/", {
+      method: "POST",
+      body: layoutData,
+    });
+  }
+
+  async updateBoardLayout(id, layoutData) {
+    if (!id) {
+      console.error("Attempted to update a board layout without an ID");
+      throw new Error("Board layout ID is required");
+    }
+    return this.request(`/board-layouts/${id}/`, {
+      method: "PATCH",
+      body: layoutData,
+    });
+  }
+
+  async createNewLayoutVersion(id) {
+    if (!id) {
+      console.error("Attempted to create a new layout version without an ID");
+      throw new Error("Board layout ID is required");
+    }
+    return this.request(`/board-layouts/${id}/new_version/`, {
+      method: "POST",
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
