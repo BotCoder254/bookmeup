@@ -1,45 +1,76 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  FiBookmark, FiStar, FiArchive, FiTag, FiFolder, 
-  FiPlus, FiSearch, FiSettings, FiMenu, FiX 
-} from 'react-icons/fi';
-import { useTags, useCollections } from '../../hooks';
-import TagManager from '../tags/TagManager';
-import CollectionManager from '../collections/CollectionManager';
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  FiBookmark,
+  FiStar,
+  FiArchive,
+  FiTag,
+  FiFolder,
+  FiPlus,
+  FiSearch,
+  FiSettings,
+  FiMenu,
+  FiX,
+} from "react-icons/fi";
+import { useTags, useCollections } from "../../hooks";
+import TagManager from "../tags/TagManager";
+import CollectionManager from "../collections/CollectionManager";
 
 const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
   const [showTagForm, setShowTagForm] = useState(false);
   const [showCollectionForm, setShowCollectionForm] = useState(false);
   const [selectedTags, setSelectedTags] = useState([]);
   const [selectedCollection, setSelectedCollection] = useState(null);
-  
+
   const navigate = useNavigate();
   const location = useLocation();
-  
-  const { data: tags = [], isLoading: tagsLoading, error: tagsError } = useTags();
-  const { data: collections = [], isLoading: collectionsLoading, error: collectionsError } = useCollections();
+
+  const {
+    data: tagsData = [],
+    isLoading: tagsLoading,
+    error: tagsError,
+  } = useTags();
+  const {
+    data: collectionsData = [],
+    isLoading: collectionsLoading,
+    error: collectionsError,
+  } = useCollections();
+
+  // Ensure tags and collections are properly processed as arrays
+  const tags = Array.isArray(tagsData) ? tagsData : [];
+  const collections = Array.isArray(collectionsData) ? collectionsData : [];
+
+  // Debug logging to check what's coming from the API
+  console.log("Tags in sidebar:", tags);
+  console.log("Collections in sidebar:", collections);
 
   const mainNavItems = [
-    { id: 'all', label: 'All Bookmarks', icon: FiBookmark, path: '/dashboard' },
-    { id: 'favorites', label: 'Favorites', icon: FiStar, path: '/favorites' },
-    { id: 'archived', label: 'Archived', icon: FiArchive, path: '/archived' },
+    { id: "all", label: "All Bookmarks", icon: FiBookmark, path: "/dashboard" },
+    { id: "favorites", label: "Favorites", icon: FiStar, path: "/favorites" },
+    { id: "archived", label: "Archived", icon: FiArchive, path: "/archived" },
   ];
 
   const handleTagSelect = (tag) => {
-    onViewChange('tag', tag.id);
+    console.log("Tag selected:", tag);
+    // Update selected tags
+    const newSelectedTags = selectedTags.includes(tag.id)
+      ? selectedTags.filter((id) => id !== tag.id)
+      : [...selectedTags, tag.id];
+    setSelectedTags(newSelectedTags);
+    onViewChange("tag", tag.id);
   };
 
   const handleCollectionSelect = (collection) => {
+    console.log("Collection selected:", collection);
     setSelectedCollection(collection);
-    onViewChange('collection', collection.id);
+    onViewChange("collection", collection.id);
   };
 
   return (
     <motion.div
       className={`${
-        isCollapsed ? 'w-16' : 'w-64'
+        isCollapsed ? "w-16" : "w-64"
       } bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300`}
       initial={false}
       animate={{ width: isCollapsed ? 64 : 256 }}
@@ -62,11 +93,11 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
               </motion.div>
             )}
           </AnimatePresence>
-          
+
           <button
             onClick={onToggle}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {isCollapsed ? (
               <FiMenu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -89,8 +120,8 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
                 onClick={() => navigate(item.path)}
                 className={`w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors ${
                   isActive
-                    ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -116,7 +147,7 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
+              animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               className="mt-6 px-3"
             >
@@ -134,7 +165,7 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
+              animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               className="mt-6 px-3"
             >
@@ -150,9 +181,7 @@ const Sidebar = ({ isCollapsed, onToggle, activeView, onViewChange }) => {
 
       {/* Settings */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-        <button
-          className="w-full flex items-center px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        >
+        <button className="w-full flex items-center px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <FiSettings className="w-5 h-5 flex-shrink-0" />
           <AnimatePresence>
             {!isCollapsed && (

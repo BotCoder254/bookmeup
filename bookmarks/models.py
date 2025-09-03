@@ -31,7 +31,7 @@ class Tag(models.Model):
 
     def __str__(self):
         return self.name
-    
+
     @property
     def bookmark_count(self):
         """Cached bookmark count for this tag"""
@@ -69,20 +69,20 @@ class Collection(models.Model):
     @property
     def bookmark_count(self):
         return self.bookmarks.count()
-    
+
     def get_cover_image(self):
         """Get cover image (user-set or auto-picked from bookmarks)"""
         if self.cover_image:
             return self.cover_image
-        
+
         # Auto-pick from top bookmarks with images
         bookmark_with_image = self.bookmarks.filter(
             screenshot_url__isnull=False
         ).exclude(screenshot_url='').first()
-        
+
         if bookmark_with_image:
             return bookmark_with_image.screenshot_url
-        
+
         return None
 
 
@@ -92,36 +92,36 @@ class Bookmark(models.Model):
     title = models.CharField(max_length=200)
     url = models.URLField(max_length=2000)
     description = models.TextField(blank=True)
-    notes = models.TextField(blank=True)  # User's personal notes
+    notes = models.TextField(blank=True)  # Legacy field, use bookmark_notes relationship instead
     content = models.TextField(blank=True)  # Extracted page content for search
     favicon_url = models.URLField(blank=True, null=True)
     screenshot_url = models.URLField(blank=True, null=True)
-    
+
     # Metadata
     is_favorite = models.BooleanField(default=False)
     is_archived = models.BooleanField(default=False)
     is_public = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)  # Read status
-    
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     visited_at = models.DateTimeField(null=True, blank=True)
-    
+
     # Relationships
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookmarks')
     tags = models.ManyToManyField(Tag, blank=True, related_name='bookmarks')
     collection = models.ForeignKey(
-        Collection, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
+        Collection,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='bookmarks'
     )
-    
+
     # Search and organization
     domain = models.CharField(max_length=255, blank=True)  # extracted from URL
-    
+
     class Meta:
         ordering = ['-created_at']
         unique_together = ['user', 'url']
@@ -165,7 +165,7 @@ class BookmarkActivity(models.Model):
         ('archived', 'Archived'),
         ('unarchived', 'Unarchived'),
     ]
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     bookmark = models.ForeignKey(Bookmark, on_delete=models.CASCADE, related_name='activities')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -198,7 +198,7 @@ class SavedView(models.Model):
         ('eye', 'Eye'),
         ('lightning', 'Lightning'),
     ]
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     icon = models.CharField(max_length=20, choices=ICON_CHOICES, default='search')
@@ -206,15 +206,15 @@ class SavedView(models.Model):
     filters = models.JSONField(default=dict)  # Stored filter configuration
     is_public = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)  # For custom ordering in sidebar
-    
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_used = models.DateTimeField(null=True, blank=True)
-    
+
     # Relationships
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_views')
-    
+
     class Meta:
         ordering = ['order', '-last_used']
         unique_together = ['user', 'name']
@@ -222,15 +222,15 @@ class SavedView(models.Model):
             models.Index(fields=['user', 'order']),
             models.Index(fields=['user', 'last_used']),
         ]
-    
+
     def __str__(self):
         return f'{self.name} - {self.user.username}'
-    
+
     def get_filter_summary(self):
         """Generate a human-readable summary of the filters"""
         if not self.filters:
             return "All bookmarks"
-        
+
         parts = []
         if self.filters.get('search'):
             parts.append(f"Text: '{self.filters['search']}'")
@@ -251,6 +251,97 @@ class SavedView(models.Model):
             if self.filters.get('date_to'):
                 date_range.append(f"to {self.filters['date_to']}")
             parts.append(f"Date: {' '.join(date_range)}")
-        
+
         return " | ".join(parts) if parts else "All bookmarks"
 
+
+class BookmarkNote(models.Model):
+    """Notes for bookmarks with history"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bookmark = models.ForeignKey(Bookmark, on_delete=models.CASCADE, related_name='bookmark_notes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookmark_notes')
+    content = models.TextField()  # Sanitized HTML content
+    plain_text = models.TextField()  # Plain text version for search
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)  # For keeping edit history
+    parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='revisions')
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['bookmark', 'is_active']),
+            models.Index(fields=['user', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Note for {self.bookmark.title} ({self.created_at.strftime('%Y-%m-%d')})"
+
+    @property
+    def has_revisions(self):
+        return self.revisions.exists()
+
+    def create_revision(self):
+        """Create a new revision based on the current state"""
+        if self.is_active:
+            # Deactivate current note
+            revision = BookmarkNote.objects.create(
+                bookmark=self.bookmark,
+                user=self.user,
+                content=self.content,
+                plain_text=self.plain_text,
+                is_active=False,
+                parent=self
+            )
+            return revision
+        return None
+
+
+class BookmarkSnapshot(models.Model):
+    """Readable snapshot of bookmarked pages"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bookmark = models.ForeignKey(Bookmark, on_delete=models.CASCADE, related_name='snapshots')
+    html_content = models.TextField()  # Sanitized HTML content
+    plain_text = models.TextField()  # Plain text version for search
+    screenshot_url = models.URLField(blank=True, null=True)  # Optional screenshot
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=[
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed')
+    ], default='pending')
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['bookmark', 'created_at']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"Snapshot of {self.bookmark.title} ({self.created_at.strftime('%Y-%m-%d')})"
+
+
+class BookmarkHighlight(models.Model):
+    """Highlighted text within a bookmark"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    bookmark = models.ForeignKey(Bookmark, on_delete=models.CASCADE, related_name='highlights')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookmark_highlights')
+    text = models.TextField()  # The highlighted text
+    note = models.TextField(blank=True)  # Optional note about the highlight
+    color = models.CharField(max_length=7, default='#FFFF00')  # Highlight color
+    position_data = models.JSONField(default=dict)  # Position information in the document
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['bookmark', 'created_at']),
+            models.Index(fields=['user', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Highlight: {self.text[:50]}{'...' if len(self.text) > 50 else ''}"

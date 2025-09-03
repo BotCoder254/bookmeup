@@ -1,11 +1,24 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  FiTag, FiPlus, FiEdit2, FiTrash2, FiMenu, 
-  FiChevronUp, FiChevronDown, FiX, FiCheck 
-} from 'react-icons/fi';
-import { useTags, useCreateTag, useUpdateTag, useDeleteTag, useReorderTags } from '../../hooks';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  FiTag,
+  FiPlus,
+  FiEdit2,
+  FiTrash2,
+  FiMenu,
+  FiChevronUp,
+  FiChevronDown,
+  FiX,
+  FiCheck,
+} from "react-icons/fi";
+import {
+  useTags,
+  useCreateTag,
+  useUpdateTag,
+  useDeleteTag,
+  useReorderTags,
+} from "../../hooks";
+import toast from "react-hot-toast";
 
 const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
   const [showForm, setShowForm] = useState(false);
@@ -13,20 +26,35 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
   const [draggedTag, setDraggedTag] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const { data: tags = [], isLoading, error } = useTags();
+  const { data: tagsData = [], isLoading, error } = useTags();
+
+  // Ensure tags is always an array
+  const tags = Array.isArray(tagsData) ? tagsData : [];
+
+  // Debug logging
+  console.log("Tags in TagManager:", tags);
+  console.log("Selected tags in TagManager:", selectedTags);
   const createTag = useCreateTag();
   const updateTag = useUpdateTag();
   const deleteTag = useDeleteTag();
   const reorderTags = useReorderTags();
 
-  // Ensure tags is always an array
-  const safeTags = Array.isArray(tags) ? tags : [];
+  // Use our processed tags array
+  const safeTags = tags;
 
-  const [newTag, setNewTag] = useState({ name: '', color: '#6366f1' });
+  const [newTag, setNewTag] = useState({ name: "", color: "#6366f1" });
 
   const colors = [
-    '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316',
-    '#eab308', '#22c55e', '#10b981', '#06b6d4', '#3b82f6'
+    "#6366f1",
+    "#8b5cf6",
+    "#ec4899",
+    "#ef4444",
+    "#f97316",
+    "#eab308",
+    "#22c55e",
+    "#10b981",
+    "#06b6d4",
+    "#3b82f6",
   ];
 
   const handleCreateTag = async (e) => {
@@ -36,9 +64,9 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
     try {
       await createTag.mutateAsync({
         ...newTag,
-        order: safeTags.length // Add to end
+        order: safeTags.length, // Add to end
       });
-      setNewTag({ name: '', color: '#6366f1' });
+      setNewTag({ name: "", color: "#6366f1" });
       setShowForm(false);
     } catch (error) {
       // Error handled by hook
@@ -55,7 +83,7 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
   };
 
   const handleDeleteTag = async (tagId) => {
-    if (window.confirm('Are you sure you want to delete this tag?')) {
+    if (window.confirm("Are you sure you want to delete this tag?")) {
       try {
         await deleteTag.mutateAsync(tagId);
       } catch (error) {
@@ -74,7 +102,7 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
     // Update order values
     const tagOrders = reorderedTags.map((tag, index) => ({
       id: tag.id,
-      order: index
+      order: index,
     }));
 
     try {
@@ -85,9 +113,9 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
   };
 
   const moveTag = (tagId, direction) => {
-    const currentIndex = safeTags.findIndex(tag => tag.id === tagId);
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    
+    const currentIndex = safeTags.findIndex((tag) => tag.id === tagId);
+    const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
     if (newIndex >= 0 && newIndex < safeTags.length) {
       handleReorder(currentIndex, newIndex);
     }
@@ -95,21 +123,21 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
 
   const handleDragStart = (e, tag) => {
     setDraggedTag(tag);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = "move";
   };
 
   const handleDragOver = (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
   };
 
   const handleDrop = (e, targetTag) => {
     e.preventDefault();
     if (!draggedTag || draggedTag.id === targetTag.id) return;
 
-    const fromIndex = safeTags.findIndex(tag => tag.id === draggedTag.id);
-    const toIndex = safeTags.findIndex(tag => tag.id === targetTag.id);
-    
+    const fromIndex = safeTags.findIndex((tag) => tag.id === draggedTag.id);
+    const toIndex = safeTags.findIndex((tag) => tag.id === targetTag.id);
+
     handleReorder(fromIndex, toIndex);
     setDraggedTag(null);
   };
@@ -118,7 +146,10 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
     return (
       <div className="space-y-2">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+          <div
+            key={i}
+            className="h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"
+          />
         ))}
       </div>
     );
@@ -155,7 +186,7 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
         {showForm && !isCollapsed && (
           <motion.form
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
             onSubmit={handleCreateTag}
@@ -169,28 +200,30 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
               className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               autoFocus
             />
-            
+
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap space-x-1 overflow-x-auto max-w-[120px]">
-                {colors.map(color => (
+                {colors.map((color) => (
                   <button
                     key={color}
                     type="button"
                     onClick={() => setNewTag({ ...newTag, color })}
                     className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${
-                      newTag.color === color ? 'border-gray-400' : 'border-transparent'
+                      newTag.color === color
+                        ? "border-gray-400"
+                        : "border-transparent"
                     }`}
                     style={{ backgroundColor: color }}
                   />
                 ))}
               </div>
-              
+
               <div className="flex space-x-2">
                 <button
                   type="button"
                   onClick={() => {
                     setShowForm(false);
-                    setNewTag({ name: '', color: '#6366f1' });
+                    setNewTag({ name: "", color: "#6366f1" });
                   }}
                   className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
@@ -227,35 +260,39 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
                 transition={{ duration: 0.2 }}
                 className="group"
               >
-              {editingTag?.id === tag.id ? (
-                <EditTagForm
-                  tag={tag}
-                  colors={colors}
-                  onSave={(updates) => handleUpdateTag(tag.id, updates)}
-                  onCancel={() => setEditingTag(null)}
-                  isLoading={updateTag.isLoading}
-                />
-              ) : (
-                <TagItem
-                  tag={tag}
-                  index={index}
-                  isSelected={selectedTags.includes(tag.id)}
-                  isCollapsed={isCollapsed}
-                  isMobile={isMobile}
-                  onSelect={() => onTagSelect?.(tag)}
-                  onEdit={() => setEditingTag(tag)}
-                  onDelete={() => handleDeleteTag(tag.id)}
-                  onMove={(direction) => moveTag(tag.id, direction)}
-                  onDragStart={(e) => handleDragStart(e, tag)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, tag)}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < safeTags.length - 1}
-                />
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+                {editingTag?.id === tag.id ? (
+                  <EditTagForm
+                    tag={tag}
+                    colors={colors}
+                    onSave={(updates) => handleUpdateTag(tag.id, updates)}
+                    onCancel={() => setEditingTag(null)}
+                    isLoading={updateTag.isLoading}
+                  />
+                ) : (
+                  <TagItem
+                    tag={tag}
+                    index={index}
+                    isSelected={
+                      Array.isArray(selectedTags)
+                        ? selectedTags.includes(tag.id)
+                        : false
+                    }
+                    isCollapsed={isCollapsed}
+                    isMobile={isMobile}
+                    onSelect={() => onTagSelect?.(tag)}
+                    onEdit={() => setEditingTag(tag)}
+                    onDelete={() => handleDeleteTag(tag.id)}
+                    onMove={(direction) => moveTag(tag.id, direction)}
+                    onDragStart={(e) => handleDragStart(e, tag)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, tag)}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < safeTags.length - 1}
+                  />
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </div>
@@ -263,19 +300,30 @@ const TagManager = ({ isCollapsed, onTagSelect, selectedTags = [] }) => {
 };
 
 // Individual tag item component
-const TagItem = ({ 
-  tag, index, isSelected, isCollapsed, isMobile, 
-  onSelect, onEdit, onDelete, onMove, 
-  onDragStart, onDragOver, onDrop, canMoveUp, canMoveDown 
+const TagItem = ({
+  tag,
+  index,
+  isSelected,
+  isCollapsed,
+  isMobile,
+  onSelect,
+  onEdit,
+  onDelete,
+  onMove,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  canMoveUp,
+  canMoveDown,
 }) => {
   return (
     <div
       className={`flex items-center px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
         isSelected
-          ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+          ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300"
+          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
       }`}
-      onClick={onSelect}
+      onClick={() => onSelect && onSelect(tag)}
       draggable={!isMobile}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -288,7 +336,7 @@ const TagItem = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onMove('up');
+                onMove("up");
               }}
               disabled={!canMoveUp}
               className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
@@ -298,7 +346,7 @@ const TagItem = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onMove('down');
+                onMove("down");
               }}
               disabled={!canMoveDown}
               className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
@@ -321,9 +369,11 @@ const TagItem = ({
       <div className="flex-1 min-w-0">
         {!isCollapsed && (
           <>
-            <span className="text-sm font-medium truncate block">{tag.name}</span>
+            <span className="text-sm font-medium truncate block">
+              {tag.name}
+            </span>
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              {tag.bookmark_count} bookmark{tag.bookmark_count !== 1 ? 's' : ''}
+              {tag.bookmark_count} bookmark{tag.bookmark_count !== 1 ? "s" : ""}
             </span>
           </>
         )}
@@ -370,7 +420,10 @@ const EditTagForm = ({ tag, colors, onSave, onCancel, isLoading }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+    >
       <input
         type="text"
         value={name}
@@ -378,22 +431,22 @@ const EditTagForm = ({ tag, colors, onSave, onCancel, isLoading }) => {
         className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
         autoFocus
       />
-      
+
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap space-x-1 overflow-x-auto max-w-[120px]">
-          {colors.map(colorOption => (
+          {colors.map((colorOption) => (
             <button
               key={colorOption}
               type="button"
               onClick={() => setColor(colorOption)}
               className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${
-                color === colorOption ? 'border-gray-400' : 'border-transparent'
+                color === colorOption ? "border-gray-400" : "border-transparent"
               }`}
               style={{ backgroundColor: colorOption }}
             />
           ))}
         </div>
-        
+
         <div className="flex space-x-2">
           <button
             type="button"

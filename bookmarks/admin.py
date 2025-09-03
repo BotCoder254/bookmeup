@@ -1,5 +1,9 @@
 from django.contrib import admin
-from .models import Bookmark, Tag, Collection, BookmarkActivity
+from .models import (
+    Bookmark, Tag, Collection, BookmarkActivity,
+    BookmarkNote, BookmarkSnapshot, BookmarkHighlight
+)
+
 
 
 @admin.register(Tag)
@@ -25,10 +29,10 @@ class CollectionAdmin(admin.ModelAdmin):
 class BookmarkAdmin(admin.ModelAdmin):
     list_display = ['title', 'url', 'user', 'domain', 'is_favorite', 'is_archived', 'created_at']
     list_filter = [
-        'is_favorite', 
-        'is_archived', 
-        'is_public', 
-        'created_at', 
+        'is_favorite',
+        'is_archived',
+        'is_public',
+        'created_at',
         'user',
         'collection',
         'tags'
@@ -38,7 +42,7 @@ class BookmarkAdmin(admin.ModelAdmin):
     filter_horizontal = ['tags']
     list_per_page = 25
     date_hierarchy = 'created_at'
-    
+
     fieldsets = (
         ('Basic Information', {
             'fields': ('title', 'url', 'description')
@@ -68,3 +72,32 @@ class BookmarkActivityAdmin(admin.ModelAdmin):
     list_per_page = 50
     date_hierarchy = 'timestamp'
 
+
+@admin.register(BookmarkNote)
+class BookmarkNoteAdmin(admin.ModelAdmin):
+    list_display = ['bookmark', 'user', 'created_at', 'updated_at', 'is_active']
+    list_filter = ['is_active', 'created_at', 'user']
+    search_fields = ['bookmark__title', 'content', 'plain_text']
+    readonly_fields = ['created_at', 'updated_at']
+    list_per_page = 25
+    date_hierarchy = 'created_at'
+
+
+@admin.register(BookmarkSnapshot)
+class BookmarkSnapshotAdmin(admin.ModelAdmin):
+    list_display = ['bookmark', 'created_at', 'status']
+    list_filter = ['status', 'created_at']
+    search_fields = ['bookmark__title', 'plain_text']
+    readonly_fields = ['created_at']
+    list_per_page = 25
+    date_hierarchy = 'created_at'
+
+
+@admin.register(BookmarkHighlight)
+class BookmarkHighlightAdmin(admin.ModelAdmin):
+    list_display = ['bookmark', 'user', 'created_at', 'color']
+    list_filter = ['color', 'created_at', 'user']
+    search_fields = ['bookmark__title', 'text', 'note']
+    readonly_fields = ['created_at', 'updated_at']
+    list_per_page = 25
+    date_hierarchy = 'created_at'

@@ -1,0 +1,125 @@
+import React, { useState, useEffect } from "react";
+import { FiExternalLink, FiRefreshCw } from "react-icons/fi";
+import { apiClient } from "../../../utils/api";
+
+const ReaderView = ({ bookmarkId, url }) => {
+  const [snapshot, setSnapshot] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (bookmarkId) {
+      fetchSnapshot();
+    }
+  }, [bookmarkId]);
+
+  const fetchSnapshot = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Use the getBookmarkSnapshot method from apiClient
+      const response = await apiClient.getBookmarkSnapshot(bookmarkId);
+      setSnapshot(response);
+    } catch (err) {
+      console.error("Error fetching snapshot:", err);
+      setError("Could not load reader view. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generateSnapshot = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Use the generateBookmarkSnapshot method from apiClient
+      const response = await apiClient.generateBookmarkSnapshot(bookmarkId);
+      setSnapshot(response);
+    } catch (err) {
+      console.error("Error generating snapshot:", err);
+      setError("Could not generate reader view. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full p-4">
+        <div className="animate-pulse text-gray-400 dark:text-gray-500">
+          Loading reader view...
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !snapshot) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <div className="text-gray-600 dark:text-gray-400 mb-6">
+          {error || "No reader view available yet."}
+        </div>
+        <div className="space-y-3">
+          <button
+            onClick={generateSnapshot}
+            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-sm font-medium transition-colors flex items-center"
+          >
+            <FiRefreshCw className="w-4 h-4 mr-2" />
+            Generate Reader View
+          </button>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium transition-colors flex items-center"
+          >
+            <FiExternalLink className="w-4 h-4 mr-2" />
+            Open Original Page
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Reader Controls */}
+      <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 p-2 flex justify-between items-center">
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          {snapshot.created_at &&
+            `Captured: ${new Date(snapshot.created_at).toLocaleDateString()}`}
+        </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={generateSnapshot}
+            className="text-xs px-2 py-1 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 flex items-center"
+          >
+            <FiRefreshCw className="w-3 h-3 mr-1" />
+            Refresh
+          </button>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs px-2 py-1 text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 flex items-center"
+          >
+            <FiExternalLink className="w-3 h-3 mr-1" />
+            Original
+          </a>
+        </div>
+      </div>
+
+      {/* Reader Content */}
+      <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        <div className="mx-auto max-w-prose">
+          <div
+            className="prose dark:prose-invert prose-headings:font-semibold prose-a:text-primary-600 dark:prose-a:text-primary-400"
+            dangerouslySetInnerHTML={{ __html: snapshot.html_content }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ReaderView;

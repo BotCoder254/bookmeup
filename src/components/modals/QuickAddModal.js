@@ -1,20 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
-import { 
-  FiX, FiLink, FiStar, FiTag, FiFolder, FiPlus, FiCheck 
-} from 'react-icons/fi';
-import { useQuickAddBookmark, useTags, useCollections } from '../../hooks';
-import { isValidUrl } from '../../utils';
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useForm } from "react-hook-form";
+import {
+  FiX,
+  FiLink,
+  FiStar,
+  FiTag,
+  FiFolder,
+  FiPlus,
+  FiCheck,
+} from "react-icons/fi";
+import { useQuickAddBookmark, useTags, useCollections } from "../../hooks";
+import { isValidUrl } from "../../utils";
 
 const QuickAddModal = ({ isOpen, onClose }) => {
   const [selectedTags, setSelectedTags] = useState([]);
-  const [newTagName, setNewTagName] = useState('');
+  const [newTagName, setNewTagName] = useState("");
   const [showNewTagInput, setShowNewTagInput] = useState(false);
 
   const quickAddBookmark = useQuickAddBookmark();
-  const { data: tags = [], isLoading: tagsLoading, error: tagsError } = useTags();
-  const { data: collections = [], isLoading: collectionsLoading, error: collectionsError } = useCollections();
+  const {
+    data: tags = [],
+    isLoading: tagsLoading,
+    error: tagsError,
+  } = useTags();
+  const {
+    data: collections = [],
+    isLoading: collectionsLoading,
+    error: collectionsError,
+  } = useCollections();
 
   const {
     register,
@@ -25,49 +39,57 @@ const QuickAddModal = ({ isOpen, onClose }) => {
     formState: { errors, isSubmitting },
   } = useForm();
 
-  const url = watch('url');
+  const url = watch("url");
 
   useEffect(() => {
     if (isOpen) {
       // Auto-focus URL field when modal opens
       setTimeout(() => {
-        const urlInput = document.getElementById('quick-add-url');
+        const urlInput = document.getElementById("quick-add-url");
         if (urlInput) urlInput.focus();
       }, 100);
     } else {
       // Reset form when modal closes
       reset();
       setSelectedTags([]);
-      setNewTagName('');
+      setNewTagName("");
       setShowNewTagInput(false);
     }
   }, [isOpen, reset]);
 
   const onSubmit = async (data) => {
     try {
+      console.log("Selected tags for submission:", selectedTags);
       const bookmarkData = {
         url: data.url,
-        title: data.title || '',
-        description: data.description || '',
+        title: data.title || "",
+        description: data.description || "",
         is_favorite: data.is_favorite || false,
         collection_id: data.collection_id || null,
-        tag_ids: selectedTags.map(tag => tag.id),
+        tag_ids: selectedTags.map((tag) => tag.id),
       };
 
+      console.log("Submitting bookmark data:", bookmarkData);
       await quickAddBookmark.mutateAsync(bookmarkData);
       onClose();
     } catch (error) {
+      console.error("Error in onSubmit:", error);
       // Error is handled in the hook
     }
   };
 
   const handleTagToggle = (tag) => {
-    setSelectedTags(prev => {
-      const isSelected = prev.find(t => t.id === tag.id);
+    console.log("Toggling tag:", tag);
+    setSelectedTags((prev) => {
+      const isSelected = prev.find((t) => t.id === tag.id);
       if (isSelected) {
-        return prev.filter(t => t.id !== tag.id);
+        const newTags = prev.filter((t) => t.id !== tag.id);
+        console.log("Tag removed, new selected tags:", newTags);
+        return newTags;
       } else {
-        return [...prev, tag];
+        const newTags = [...prev, tag];
+        console.log("Tag added, new selected tags:", newTags);
+        return newTags;
       }
     });
   };
@@ -78,28 +100,28 @@ const QuickAddModal = ({ isOpen, onClose }) => {
   };
 
   const modalVariants = {
-    hidden: { 
-      opacity: 0, 
+    hidden: {
+      opacity: 0,
       scale: 0.95,
       y: 20,
     },
-    visible: { 
-      opacity: 1, 
+    visible: {
+      opacity: 1,
       scale: 1,
       y: 0,
       transition: {
-        type: 'spring',
+        type: "spring",
         damping: 25,
         stiffness: 500,
-      }
+      },
     },
-    exit: { 
-      opacity: 0, 
+    exit: {
+      opacity: 0,
       scale: 0.95,
       y: 20,
       transition: {
         duration: 0.2,
-      }
+      },
     },
   };
 
@@ -149,11 +171,12 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                   <input
                     id="quick-add-url"
                     type="url"
-                    className={`input pl-10 ${errors.url ? 'input-error' : ''}`}
+                    className={`input pl-10 ${errors.url ? "input-error" : ""}`}
                     placeholder="https://example.com"
-                    {...register('url', {
-                      required: 'URL is required',
-                      validate: (value) => isValidUrl(value) || 'Please enter a valid URL',
+                    {...register("url", {
+                      required: "URL is required",
+                      validate: (value) =>
+                        isValidUrl(value) || "Please enter a valid URL",
                     })}
                   />
                 </div>
@@ -172,7 +195,7 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                   type="text"
                   className="input"
                   placeholder="Will be auto-fetched if left empty"
-                  {...register('title')}
+                  {...register("title")}
                 />
               </div>
 
@@ -186,7 +209,7 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                   rows={2}
                   className="input resize-none"
                   placeholder="Will be auto-fetched if left empty"
-                  {...register('description')}
+                  {...register("description")}
                 />
               </div>
 
@@ -202,14 +225,15 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                   <select
                     id="quick-add-collection"
                     className="input pl-10"
-                    {...register('collection_id')}
+                    {...register("collection_id")}
                   >
                     <option value="">Select a collection</option>
-                    {Array.isArray(collections) && collections.map((collection) => (
-                      <option key={collection.id} value={collection.id}>
-                        {collection.name}
-                      </option>
-                    ))}
+                    {Array.isArray(collections) &&
+                      collections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </option>
+                      ))}
                     {collectionsLoading && (
                       <option disabled>Loading collections...</option>
                     )}
@@ -223,7 +247,7 @@ const QuickAddModal = ({ isOpen, onClose }) => {
               {/* Tags Section */}
               <div className="form-group">
                 <label className="label">Tags (optional)</label>
-                
+
                 {/* Selected Tags */}
                 {selectedTags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -254,27 +278,28 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                 {/* Available Tags */}
                 <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2">
                   <div className="flex flex-wrap gap-1">
-                    {Array.isArray(tags) && tags.map((tag) => (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        onClick={() => handleTagToggle(tag)}
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                          selectedTags.find(t => t.id === tag.id)
-                            ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        }`}
-                      >
-                        <div
-                          className="w-2 h-2 rounded-full mr-2"
-                          style={{ backgroundColor: tag.color }}
-                        />
-                        {tag.name}
-                        {selectedTags.find(t => t.id === tag.id) && (
-                          <FiCheck className="w-3 h-3 ml-1" />
-                        )}
-                      </button>
-                    ))}
+                    {Array.isArray(tags) &&
+                      tags.map((tag) => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => handleTagToggle(tag)}
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                            selectedTags.find((t) => t.id === tag.id)
+                              ? "bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300"
+                              : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          }`}
+                        >
+                          <div
+                            className="w-2 h-2 rounded-full mr-2"
+                            style={{ backgroundColor: tag.color || "#6366f1" }}
+                          />
+                          {tag.name}
+                          {selectedTags.find((t) => t.id === tag.id) && (
+                            <FiCheck className="w-3 h-3 ml-1" />
+                          )}
+                        </button>
+                      ))}
                     {tagsLoading && (
                       <div className="text-sm text-gray-500 dark:text-gray-400 p-2">
                         Loading tags...
@@ -285,11 +310,13 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                         Failed to load tags
                       </div>
                     )}
-                    {!tagsLoading && !tagsError && (!tags || tags.length === 0) && (
-                      <div className="text-sm text-gray-500 dark:text-gray-400 p-2">
-                        No tags available
-                      </div>
-                    )}
+                    {!tagsLoading &&
+                      !tagsError &&
+                      (!tags || tags.length === 0) && (
+                        <div className="text-sm text-gray-500 dark:text-gray-400 p-2">
+                          No tags available
+                        </div>
+                      )}
                   </div>
                 </div>
               </div>
@@ -300,9 +327,12 @@ const QuickAddModal = ({ isOpen, onClose }) => {
                   id="quick-add-favorite"
                   type="checkbox"
                   className="rounded text-primary-600 focus:ring-primary-500"
-                  {...register('is_favorite')}
+                  {...register("is_favorite")}
                 />
-                <label htmlFor="quick-add-favorite" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
+                <label
+                  htmlFor="quick-add-favorite"
+                  className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300"
+                >
                   <FiStar className="w-4 h-4 mr-1" />
                   Add to favorites
                 </label>
